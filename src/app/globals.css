@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f6f4ee;
+  --foreground: #111827;
+  --surface: #fffdf8;
+  --line: rgba(15, 23, 42, 0.08);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display-serif: var(--font-display-serif);
+  --font-display-cn: var(--font-display-cn);
+}
+
+html {
+  scroll-behavior: smooth;
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.home-shell {
+  height: calc(100svh - 3.5rem);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+}
+
+.home-panel {
+  min-height: calc(100svh - 3.5rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.home-panel-title {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.88), transparent 52%),
+    linear-gradient(180deg, #f7f5ef 0%, #f2efe7 100%);
+}
+
+.home-panel-search {
+  border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98) 0%, rgba(244, 241, 233, 0.96) 100%);
+}
+
+.brand-title {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  line-height: 0.92;
+}
+
+.brand-title-en {
+  font-family: var(--font-display-serif), "Times New Roman", serif;
+  font-size: clamp(4rem, 9vw, 7.9rem);
+  font-weight: 600;
+  color: #111827;
+}
+
+.brand-title-zh {
+  font-family: var(--font-display-cn), "KaiTi", cursive;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  color: #1f2937;
+}
+
+@media (max-width: 767px) {
+  .home-shell {
+    height: auto;
+    overflow-y: visible;
+  }
+
+  .home-panel {
+    min-height: calc(100svh - 3.5rem);
+  }
+}

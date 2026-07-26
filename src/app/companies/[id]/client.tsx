@@ -1,0 +1,329 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import LoginDialog from "@/components/LoginDialog";
+import RecordCard from "@/components/RecordCard";
+import type { CompanyExternalProfile } from "@/lib/company-profile";
+import type { RecordData } from "@/types";
+
+interface CompanyInfo {
+  id: number;
+  name: string;
+  alias: string | null;
+  description: string | null;
+  industry: string | null;
+  businessInfo: string | null;
+  score: number;
+  riskTags: string[];
+  recordCount: number;
+  cities: string[];
+  createdAt: string;
+  externalProfile: CompanyExternalProfile;
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  let color = "bg-red-100 text-red-700";
+  let label = "谨慎";
+  if (score >= 70) {
+    color = "bg-emerald-100 text-emerald-700";
+    label = "较稳";
+  } else if (score >= 40) {
+    color = "bg-amber-100 text-amber-700";
+    label = "留意";
+  }
+
+  return (
+    <div className={"inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium " + color}>
+      <span className="text-base">{score}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function ImpactBadge({ impact }: { impact: CompanyExternalProfile["items"][number]["impact"] }) {
+  const styles = {
+    critical: "bg-red-50 text-red-700 border-red-100",
+    high: "bg-amber-50 text-amber-700 border-amber-100",
+    medium: "bg-sky-50 text-sky-700 border-sky-100",
+    low: "bg-slate-100 text-slate-600 border-slate-200",
+  } as const;
+
+  const labels = {
+    critical: "高影响",
+    high: "重点看",
+    medium: "辅助判断",
+    low: "补充信息",
+  } as const;
+
+  return (
+    <span className={"inline-flex rounded-full border px-2.5 py-1 text-xs font-medium " + styles[impact]}>
+      {labels[impact]}
+    </span>
+  );
+}
+
+export default function CompanyPageClient({
+  company,
+  initialCity,
+  initialRecords,
+}: {
+  company: CompanyInfo;
+  initialCity: string;
+  initialRecords: RecordData[];
+}) {
+  const [allRecords] = useState<RecordData[]>(initialRecords);
+  const [showContent, setShowContent] = useState(false);
+  const [selectedCity, setSelectedCity] = useState(initialCity);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginInput, setLoginInput] = useState("");
+  const [logging, setLogging] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const cityRecords = selectedCity
+    ? allRecords.filter((record) => record.city === selectedCity)
+    : allRecords;
+
+  const otherCityRecords = selectedCity
+    ? allRecords.filter((record) => record.city && record.city !== selectedCity)
+    : [];
+
+  const hasRecordsInCity = cityRecords.length > 0;
+  const displayRecords = hasRecordsInCity ? cityRecords : allRecords;
+  const availableCities = [...new Set(allRecords.map((record) => record.city).filter(Boolean))];
+
+  const handleLogin = async () => {
+    const trimmed = loginInput.trim();
+    if (!trimmed) return;
+    setLogging(true);
+    setLoginError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: trimmed }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem("job_insight_user", JSON.stringify(data.user));
+        setShowLogin(false);
+        setLoginInput("");
+        setShowContent(true);
+      } else {
+        setLoginError(data.error || "登录失败");
+      }
+    } catch {
+      setLoginError("网络错误，请稍后重试");
+    } finally {
+      setLogging(false);
+    }
+  };
+
+  const handleSkipAd = () => {
+    try {
+      const raw = localStorage.getItem("job_insight_user");
+      if (raw) {
+        const user = JSON.parse(raw);
+        if (user.membershipDays > 0) {
+          setShowContent(true);
+          return;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setShowLogin(true);
+  };
+
+  const externalItems = useMemo(() => company.externalProfile.items, [company.externalProfile.items]);
+
+  return (
+    <div className="mx-auto max-w-5xl px-4 py-6">
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold text-slate-950">{company.name}</h1>
+            {company.alias ? <p className="mt-1 text-sm text-slate-500">简称：{company.alias}</p> : null}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {company.industry ? (
+                <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm text-slate-600">
+                  {company.industry}
+                </span>
+              ) : null}
+              <ScoreBadge score={company.score} />
+              <span className="text-sm text-slate-400">{allRecords.length} 条记录</span>
+              {company.cities.length > 0 ? (
+                <span className="text-sm text-slate-400">{company.cities.slice(0, 3).join(" · ")}</span>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {company.description ? (
+          <p className="mt-4 text-sm leading-6 text-slate-600">{company.description}</p>
+        ) : null}
+
+        {company.riskTags.length > 0 ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {company.riskTags.map((tag) => (
+              <span
+                key={tag}
+                className="rounded-full border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs text-orange-700"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">External profile</p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-950">企业外部数据</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              劳动争议、法律纠纷、社保人数等指标会按对入职影响排序显示。
+            </p>
+          </div>
+          <div className="text-right text-xs text-slate-400">
+            <div>数据源：{company.externalProfile.provider || "待接入"}</div>
+            <div>更新时间：{company.externalProfile.updatedAt || "未同步"}</div>
+          </div>
+        </div>
+
+        {externalItems.length > 0 ? (
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {externalItems.map((item) => (
+              <div
+                key={item.key}
+                className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-slate-900">{item.label}</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-950">{item.value}</div>
+                  </div>
+                  <ImpactBadge impact={item.impact} />
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-500">{item.note}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm leading-7 text-slate-500">
+            这一块已经预留好外部企业数据入口。接入企查查、天眼查或同类数据源后，这里会优先展示劳动争议、法律纠纷、被执行信息、社保参保人数等对入职判断最关键的指标。
+          </div>
+        )}
+
+        {company.externalProfile.rawSummary ? (
+          <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
+            {company.externalProfile.rawSummary}
+          </div>
+        ) : null}
+      </div>
+
+      {availableCities.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm text-slate-500">城市筛选：</span>
+          <button
+            onClick={() => setSelectedCity("")}
+            className={
+              "rounded-lg px-3 py-1.5 text-sm transition-colors " +
+              (!selectedCity ? "bg-slate-950 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200")
+            }
+          >
+            全部
+          </button>
+          {availableCities.map((city) => (
+            <button
+              key={city}
+              onClick={() => setSelectedCity(city)}
+              className={
+                "rounded-lg px-3 py-1.5 text-sm transition-colors " +
+                (selectedCity === city
+                  ? "bg-slate-950 text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200")
+              }
+            >
+              {city}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {selectedCity && !hasRecordsInCity && allRecords.length > 0 ? (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <strong>{selectedCity} 暂无记录</strong>
+          <p className="mt-1">以下展示的是这家公司在其他城市的记录，仅供参考。</p>
+        </div>
+      ) : null}
+
+      {selectedCity && hasRecordsInCity && otherCityRecords.length > 0 ? (
+        <div className="mb-4 rounded-2xl border border-sky-100 bg-sky-50 p-3 text-sm text-sky-700">
+          当前只显示 <strong>{selectedCity}</strong> 的记录。
+          <button onClick={() => setSelectedCity("")} className="ml-2 underline hover:no-underline">
+            查看全部
+          </button>
+        </div>
+      ) : null}
+
+      <h2 className="mb-4 text-lg font-semibold text-slate-950">
+        用户记录
+        <span className="ml-2 text-sm font-normal text-slate-400">({displayRecords.length} 条)</span>
+      </h2>
+
+      {!showContent && displayRecords.length > 0 ? (
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
+          <h3 className="text-lg font-semibold text-slate-950">查看完整记录</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            看完广告后可继续查看全部 {displayRecords.length} 条记录；会员可直接跳过。
+          </p>
+          <div className="mt-5 flex justify-center gap-3">
+            <button
+              onClick={() => setShowContent(true)}
+              className="rounded-xl bg-slate-950 px-6 py-2.5 font-medium text-white transition hover:bg-slate-800"
+            >
+              观看广告
+            </button>
+            <button
+              onClick={handleSkipAd}
+              className="rounded-xl border border-slate-200 bg-white px-6 py-2.5 font-medium text-slate-600 transition hover:bg-slate-50"
+            >
+              会员直达
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-slate-400">广告模式无需登录，会员可直接查看。</p>
+        </div>
+      ) : null}
+
+      <div className="space-y-4">
+        {displayRecords.length === 0 ? (
+          <div className="py-12 text-center text-slate-400">
+            <p>暂时还没有用户记录</p>
+            <a href="/upload" className="mt-3 inline-block text-sm text-slate-900 hover:underline">
+              去分享第一条经历
+            </a>
+          </div>
+        ) : showContent ? (
+          displayRecords.map((record) => <RecordCard key={record.id} record={record} />)
+        ) : null}
+      </div>
+
+      <LoginDialog
+        open={showLogin}
+        title="登录后跳过广告"
+        description="会员登录后可以直接查看完整记录。"
+        value={loginInput}
+        error={loginError}
+        loading={logging}
+        onChange={setLoginInput}
+        onClose={() => {
+          setShowLogin(false);
+          setLoginError("");
+          setLoginInput("");
+        }}
+        onSubmit={handleLogin}
+      />
+    </div>
+  );
+}

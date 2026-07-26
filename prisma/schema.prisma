@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// 公司信息
+model Company {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique // 公司全称
+  alias       String?  // 简称/品牌名
+  description String?  // 简介
+  industry    String?  // 行业
+  businessInfo String? // 工商信息 JSON
+  score       Int      @default(0) // 可信度评分 0-100
+  riskTags    String   @default("[]") // 风险标签 JSON array
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  records     Record[]
+}
+
+// 用户（手机号/邮箱直接登录，无密码）
+model User {
+  id             Int      @id @default(autoincrement())
+  identifier     String   @unique // 手机号或邮箱
+  membershipDays Int      @default(0) // 会员总天数
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  records        Record[]
+}
+
+// 用户上传记录
+model Record {
+  id        Int      @id @default(autoincrement())
+  type      String   // CHAT_SCREENSHOT | INTERVIEW_EXPERIENCE | JD_SNAPSHOT
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id])
+
+  userId  Int?  // 上传用户（关联 User）
+  user    User? @relation(fields: [userId], references: [id])
+
+  title       String  // 标题
+  content     String  // 文本内容/描述
+  images      String  @default("[]") // 图片路径 JSON array
+
+  // 面试经历专用字段
+  actualPosition  String? // 实际岗位
+  salaryRange     String? // 薪资范围
+  workContent     String? // 工作内容
+  isConsistentWithJD Boolean? // 是否与JD相符
+
+  // 审核状态
+  status      String  @default("PENDING") // PENDING | APPROVED | REJECTED
+  rejectReason String?
+
+  // 举报
+  isReported  Boolean @default(false)
+  reportCount Int     @default(0)
+  reportReason String?
+
+  // 所在城市
+  city        String  @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([city])
+}
+
+// 管理后台用户
+model AdminUser {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
