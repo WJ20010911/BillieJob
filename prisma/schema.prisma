@@ -38,6 +38,7 @@ model User {
   favoriteCompanies FavoriteCompany[]
   favoriteRecords FavoriteRecord[]
   browseHistory  BrowseHistory[]
+  jobAnalyses    JobAnalysis[]
 }
 
 // 用户上传记录
@@ -136,6 +137,23 @@ model BrowseHistory {
   @@index([userId, createdAt])
   @@index([companyId])
   @@index([recordId])
+}
+
+model JobAnalysis {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  companyName String?
+  source      String?
+  imageUrl    String?
+  rawText     String
+  resultJson  String
+  riskScore   Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 // 管理后台用户

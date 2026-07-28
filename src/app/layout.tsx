@@ -74,10 +74,13 @@ export default function RootLayout({
                BillieJob
              </span>
             </Link>
-            <nav className="flex items-center gap-4 text-sm">
-              <a href="/upload" className="font-medium text-slate-600 transition hover:text-slate-950">
+            <nav className="flex items-center gap-2 text-sm">
+              <Link href="/upload" className="inline-flex h-10 items-center justify-center rounded-xl border-2 border-slate-950 bg-white px-3 font-bold text-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:bg-slate-50 sm:px-4">
                 分享记录
-              </a>
+              </Link>
+              <Link href="/analyze" className="inline-flex h-10 items-center justify-center rounded-xl border-2 border-cyan-700 bg-cyan-600 px-3 font-bold text-white shadow-[0_4px_0_rgba(8,145,178,0.2)] transition hover:-translate-y-0.5 hover:bg-cyan-700 sm:px-4">
+                职位分析
+              </Link>
               <UserMenu />
             </nav>
           </div>
