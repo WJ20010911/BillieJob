@@ -163,3 +163,10 @@ model AdminUser {
   passwordHash String
   createdAt    DateTime @default(now())
 }
+
+model AppSetting {
+  id        Int      @id @default(autoincrement())
+  key       String    @unique
+  value     String
+  updatedAt DateTime  @updatedAt
+}

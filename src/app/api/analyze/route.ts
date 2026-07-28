@@ -1,5 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { callJobAnalysisAI, type AIAnalysisOutput } from "@/lib/ai-analysis";
 
 type FindingLevel = "high" | "medium" | "low";
 type FieldState = "found" | "missing" | "unclear";
@@ -18,6 +19,7 @@ interface AnalysisResult {
   fields: Record<string, { value: string; state: FieldState }>;
   findings: Finding[];
   strengths: string[];
+  aiEnhanced?: boolean;
 }
 
 const WORDS = {
@@ -172,8 +174,45 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   return { riskScore, summary, fields, findings, strengths };
 }
 
+function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput): AnalysisResult {
+  const fields = { ...base.fields };
+  for (const key of Object.keys(fields)) {
+    const candidate = ai.fields?.[key];
+    const value = typeof candidate?.value === "string" ? candidate.value.trim() : "";
+    if (!value || value === "NOT_MENTIONED" || value.length > 180) continue;
+    const state = candidate?.state === "unclear" || candidate?.state === "missing" ? candidate.state : "found";
+    if (state !== "missing") fields[key] = { value, state };
+  }
+  const findings = [...(ai.findings || []).map((item) => ({
+    category: item.category?.trim() || "",
+    item: item.item?.trim() || "",
+    level: (item.level === "high" || item.level === "medium" || item.level === "low" ? item.level : "low") as FindingLevel,
+    evidence: item.evidence?.trim() || "",
+    suggestion: item.suggestion?.trim() || "",
+  })).filter((item) => item.category && item.item && item.evidence && item.suggestion), ...base.findings];
+  const uniqueFindings = Array.from(new Map(findings.map((item) => [item.category + ":" + item.item, item])).values()).slice(0, 40);
+  const strengths = Array.from(new Set([
+    ...(ai.strengths || []).filter((item): item is string => typeof item === "string" && item.trim().length > 0 && item.length <= 120),
+    ...base.strengths,
+  ])).slice(0, 20);
+  return {
+    ...base,
+    summary: typeof ai.summary === "string" && ai.summary.trim() ? ai.summary.trim().slice(0, 500) : base.summary,
+    fields,
+    findings: uniqueFindings,
+    strengths,
+    aiEnhanced: true,
+  };
+}
+
 function serialize<T extends { resultJson: string; rawText: string; companyName: string | null }>(item: T) {
-  const result = analyzeText(item.rawText, item.companyName);
+  let stored: AnalysisResult | null = null;
+  try {
+    stored = JSON.parse(item.resultJson) as AnalysisResult;
+  } catch {
+    stored = null;
+  }
+  const result = stored?.aiEnhanced ? stored : analyzeText(item.rawText, item.companyName);
   return { ...item, riskScore: result.riskScore, result };
 }
 
@@ -197,10 +236,21 @@ export async function POST(request: NextRequest) {
     const rawText = typeof body.rawText === "string" ? body.rawText.trim() : "";
     if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
     const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
-    const result = analyzeText(rawText, companyName);
+    const deterministicResult = analyzeText(rawText, companyName);
+    let result = deterministicResult;
+    let aiUsed = false;
+    try {
+      const aiResult = await callJobAnalysisAI(rawText);
+      if (aiResult) {
+        result = mergeAIResult(deterministicResult, aiResult);
+        aiUsed = true;
+      }
+    } catch (error) {
+      console.error("AI analysis failed, using deterministic analysis:", error);
+    }
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
     const item = await prisma.jobAnalysis.create({ data: { userId, title, companyName, source: typeof body.source === "string" ? body.source.trim() || null : null, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null, rawText, resultJson: JSON.stringify(result), riskScore: result.riskScore } });
-    return NextResponse.json({ success: true, item: serialize(item), result });
+    return NextResponse.json({ success: true, aiUsed, item: serialize(item), result });
   } catch (error) {
     console.error("Create analysis archive error:", error);
     return NextResponse.json({ error: "\u5206\u6790\u4fdd\u5b58\u5931\u8d25" }, { status: 500 });
