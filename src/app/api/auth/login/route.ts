@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
       user: {
         id: user.id,
         identifier: user.identifier,
+        nickname: user.nickname,
         membershipDays: user.membershipDays,
       },
     });
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       id: user.id,
       identifier: user.identifier,
+      nickname: user.nickname,
       membershipDays: user.membershipDays,
     });
   } catch {

@@ -66,6 +66,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "无效的状态" }, { status: 400 });
     }
 
+    const existing = await prisma.record.findUnique({ where: { id } });
+    if (!existing) return NextResponse.json({ error: "记录不存在" }, { status: 404 });
+    if (existing.status === status) return NextResponse.json({ success: true });
+
     const record = await prisma.record.update({
       where: { id },
       data: {
@@ -115,7 +119,35 @@ export async function PATCH(request: NextRequest) {
           where: { id: record.userId },
           data: { membershipDays: { increment: 1 } },
         });
+        await prisma.notification.createMany({
+          data: [
+            {
+              userId: record.userId,
+              type: "RECORD_APPROVED",
+              title: "记录审核通过",
+              content: "你的记录已审核通过，现在已经可以在公司页面看到。",
+              link: `/companies/${record.companyId}`,
+            },
+            {
+              userId: record.userId,
+              type: "MEMBERSHIP_CREDITED",
+              title: "会员天数到账",
+              content: "感谢你的分享，会员天数已增加 1 天。",
+              link: "/account?tab=profile",
+            },
+          ],
+        });
       }
+    } else if (status === "REJECTED" && record.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: record.userId,
+          type: "RECORD_REJECTED",
+          title: "记录未通过审核",
+          content: `这条记录暂未通过审核：${record.rejectReason || "内容不符合平台规范"}`,
+          link: "/account?tab=records",
+        },
+      });
     }
 
     return NextResponse.json({ success: true });

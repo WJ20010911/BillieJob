@@ -20,6 +20,8 @@ model Company {
   updatedAt   DateTime @updatedAt
 
   records     Record[]
+  favoriteCompanies FavoriteCompany[]
+  browseHistory BrowseHistory[]
 }
 
 // 用户（手机号/邮箱直接登录，无密码）
@@ -30,7 +32,12 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
+  nickname       String?
   records        Record[]
+  notifications  Notification[]
+  favoriteCompanies FavoriteCompany[]
+  favoriteRecords FavoriteRecord[]
+  browseHistory  BrowseHistory[]
 }
 
 // 用户上传记录
@@ -46,6 +53,7 @@ model Record {
   title       String  // 标题
   content     String  // 文本内容/描述
   images      String  @default("[]") // 图片路径 JSON array
+  rating      Int?    // 用户评分 1-5 星
 
   // 面试经历专用字段
   actualPosition  String? // 实际岗位
@@ -72,6 +80,62 @@ model Record {
   @@index([userId])
   @@index([status])
   @@index([city])
+  favoriteRecords FavoriteRecord[]
+  browseHistory BrowseHistory[]
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  content   String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model FavoriteCompany {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId Int
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, companyId])
+  @@index([userId, createdAt])
+}
+
+model FavoriteRecord {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordId  Int
+  record    Record   @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, recordId])
+  @@index([userId, createdAt])
+}
+
+model BrowseHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId Int?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  recordId  Int?
+  record    Record?  @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([companyId])
+  @@index([recordId])
 }
 
 // 管理后台用户

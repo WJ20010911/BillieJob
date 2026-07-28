@@ -176,16 +176,17 @@ async function main() {
     },
   ];
 
-  for (const data of recordData) {
-    await prisma.record.create({ data });
+  const seedRatings = [2, 3, 2, 4, 1, 1, 2, 4, 5];
+  for (const [index, data] of recordData.entries()) {
+    await prisma.record.create({ data: { ...data, rating: seedRatings[index] } });
   }
 
   console.log("Created " + recordData.length + " records\n");
 
   await prisma.user.create({
-    data: { identifier: "13800138000", membershipDays: 5 },
+    data: { identifier: "666", membershipDays: 5 },
   });
-  console.log("Test user created (13800138000, 5 days membership)\n");
+  console.log("Test user created (666, 5 days membership)\n");
 
   await prisma.adminUser.create({
     data: { username: "admin", passwordHash: "admin123" },

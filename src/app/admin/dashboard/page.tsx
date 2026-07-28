@@ -8,6 +8,7 @@ interface RecordItem {
   type: string;
   title: string;
   content: string;
+  rating: number | null;
   status: string;
   rejectReason?: string;
   company: { id: number; name: string };
@@ -127,6 +128,13 @@ export default function AdminDashboard() {
               <p className="mb-4 line-clamp-3 whitespace-pre-wrap text-sm text-gray-600">
                 {record.content}
               </p>
+
+              {record.rating ? (
+                <div className="mb-4 text-sm text-amber-500" aria-label={`${record.rating} 星评分`}>
+                  {"★".repeat(record.rating)}{"☆".repeat(5 - record.rating)}
+                  <span className="ml-2 text-xs text-gray-400">{record.rating}/5</span>
+                </div>
+              ) : null}
 
               {filter === "PENDING" ? (
                 <div className="flex gap-2 border-t border-gray-100 pt-3">

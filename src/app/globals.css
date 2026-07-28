@@ -27,15 +27,19 @@ body {
   font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
+body:has(.home-shell) {
+  overflow: hidden;
+}
+
 .home-shell {
   height: calc(100svh - 3.5rem);
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
 }
 
 .home-panel {
+  height: calc(100svh - 3.5rem);
   min-height: calc(100svh - 3.5rem);
   display: flex;
   align-items: center;
@@ -84,6 +88,7 @@ body {
   }
 
   .home-panel {
+    height: auto;
     min-height: calc(100svh - 3.5rem);
   }
 }

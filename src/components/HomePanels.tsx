@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import SearchBox from "@/components/SearchBox";
 
 export default function HomePanels({
@@ -13,8 +13,9 @@ export default function HomePanels({
   const shellRef = useRef<HTMLDivElement>(null);
   const panelIndexRef = useRef(0);
   const lockedRef = useRef(false);
+  const animationFrameRef = useRef<number | null>(null);
 
-  const moveToPanel = (index: number) => {
+  const moveToPanel = useCallback((index: number) => {
     const shell = shellRef.current;
     if (!shell) return;
 
@@ -22,29 +23,69 @@ export default function HomePanels({
     const target = panels[index];
     if (!target) return;
 
+    const shellTop = shell.getBoundingClientRect().top;
+    const targetTop = target.getBoundingClientRect().top - shellTop + shell.scrollTop;
+
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+    }
+
     panelIndexRef.current = index;
     lockedRef.current = true;
-    shell.scrollTo({ top: target.offsetTop, behavior: "smooth" });
-    window.setTimeout(() => {
+    const startTop = shell.scrollTop;
+    const distance = targetTop - startTop;
+    const startTime = performance.now();
+    const duration = 680;
+
+    const animate = (currentTime: number) => {
+      const progress = Math.min((currentTime - startTime) / duration, 1);
+      const eased = progress < 0.5
+        ? 4 * progress ** 3
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      shell.scrollTop = startTop + distance * eased;
+
+      if (progress < 1) {
+        animationFrameRef.current = window.requestAnimationFrame(animate);
+        return;
+      }
+
+      shell.scrollTop = targetTop;
+      animationFrameRef.current = null;
       lockedRef.current = false;
-    }, 700);
-  };
+    };
 
-  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (window.innerWidth < 768 || Math.abs(event.deltaY) < 2) return;
+    animationFrameRef.current = window.requestAnimationFrame(animate);
+  }, []);
 
-    event.preventDefault();
-    if (lockedRef.current) return;
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
 
-    const direction = event.deltaY > 0 ? 1 : -1;
-    const nextIndex = Math.max(0, Math.min(1, panelIndexRef.current + direction));
-    if (nextIndex !== panelIndexRef.current) {
-      moveToPanel(nextIndex);
-    }
-  };
+    const handleWheel = (event: WheelEvent) => {
+      if (window.innerWidth < 768 || Math.abs(event.deltaY) < 2) return;
+
+      event.preventDefault();
+      if (lockedRef.current) return;
+
+      const direction = event.deltaY > 0 ? 1 : -1;
+      const nextIndex = Math.max(0, Math.min(1, panelIndexRef.current + direction));
+      if (nextIndex !== panelIndexRef.current) {
+        moveToPanel(nextIndex);
+      }
+    };
+
+    shell.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      shell.removeEventListener("wheel", handleWheel);
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [moveToPanel]);
 
   return (
-    <div ref={shellRef} className="home-shell" onWheel={handleWheel}>
+    <div ref={shellRef} className="home-shell">
       <section data-home-panel className="home-panel home-panel-title">
         <div className="mx-auto flex max-w-4xl flex-col items-center px-6 text-center">
           <h1 className="brand-title">
@@ -68,7 +109,7 @@ export default function HomePanels({
       </section>
 
       <section data-home-panel className="home-panel home-panel-search">
-        <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-4xl flex-col items-center justify-center px-6 text-center">
+        <div className="mx-auto flex w-full max-w-4xl flex-col items-center justify-center px-6 text-center">
           <h2 className="text-2xl font-semibold text-slate-950 sm:text-3xl">搜公司</h2>
           <p className="mt-3 text-sm text-slate-500">先查口碑，再决定要不要聊。</p>
           <div className="mt-8 w-full max-w-3xl">

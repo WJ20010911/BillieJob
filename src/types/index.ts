@@ -25,6 +25,7 @@ export interface RecordData {
   title: string;
   content: string;
   images: string[];
+  rating: number | null;
   actualPosition: string | null;
   salaryRange: string | null;
   workContent: string | null;

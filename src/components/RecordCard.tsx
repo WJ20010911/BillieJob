@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
+import LoginDialog from "@/components/LoginDialog";
 import type { RecordData } from "@/types";
 
 const typeLabels: Record<string, string> = {
@@ -24,6 +26,90 @@ function timeAgo(dateStr: string): string {
 export default function RecordCard({ record }: { record: RecordData }) {
   const [reported, setReported] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const [favorited, setFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginInput, setLoginInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [logging, setLogging] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = localStorage.getItem("job_insight_user");
+        const currentUser = raw ? JSON.parse(raw) as { id: number } : null;
+        if (!currentUser) return;
+        setUserId(currentUser.id);
+        void fetch(`/api/account/favorites?kind=record&id=${record.id}`, {
+          headers: { "x-user-id": String(currentUser.id) },
+        }).then((response) => response.ok ? response.json() : null).then((result) => {
+          if (result) setFavorited(Boolean(result.favorited));
+        });
+        void fetch("/api/account/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-id": String(currentUser.id) },
+          body: JSON.stringify({ recordId: record.id }),
+        });
+      } catch {
+        // Ignore stale local account data.
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [record.id]);
+
+  const saveFavorite = async (id: number) => {
+    const response = await fetch("/api/account/favorites", {
+      method: favorited ? "DELETE" : "POST",
+      headers: { "Content-Type": "application/json", "x-user-id": String(id) },
+      body: JSON.stringify({ kind: "record", id: record.id }),
+    });
+    if (response.ok) setFavorited(!favorited);
+  };
+
+  const handleFavorite = async () => {
+    if (favoriteLoading) return;
+    if (!userId) {
+      setShowLogin(true);
+      return;
+    }
+    setFavoriteLoading(true);
+    try {
+      await saveFavorite(userId);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    const identifier = loginInput.trim();
+    if (!identifier) return;
+    setLogging(true);
+    setLoginError("");
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setLoginError(result.error || "登录失败");
+        return;
+      }
+      localStorage.setItem("job_insight_user", JSON.stringify(result.user));
+      setUserId(result.user.id);
+      setShowLogin(false);
+      setLoginInput("");
+      setFavoriteLoading(true);
+      await saveFavorite(result.user.id);
+    } catch {
+      setLoginError("网络错误，请稍后再试");
+    } finally {
+      setLogging(false);
+      setFavoriteLoading(false);
+    }
+  };
 
   const handleReport = async () => {
     if (reported) return;
@@ -58,6 +144,11 @@ export default function RecordCard({ record }: { record: RecordData }) {
           <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
             {typeLabels[record.type] || record.type}
           </span>
+          {record.rating ? (
+            <span className="ml-2 text-sm font-medium text-amber-500" aria-label={`${record.rating} 星评分`}>
+              {"★".repeat(record.rating)}{"☆".repeat(5 - record.rating)}
+            </span>
+          ) : null}
           <h3 className="text-base font-semibold text-gray-900 mt-2">
             {record.title}
           </h3>
@@ -118,6 +209,14 @@ export default function RecordCard({ record }: { record: RecordData }) {
       {/* Footer */}
       <div className="flex justify-end pt-3 mt-2 border-t border-gray-50">
         <button
+          onClick={() => void handleFavorite()}
+          disabled={favoriteLoading}
+          className={`mr-2 text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${favorited ? "text-amber-600 bg-amber-50" : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"}`}
+          title={favorited ? "取消收藏评价" : "收藏评价"}
+        >
+          {favorited ? "★ 已收藏" : "☆ 收藏"}
+        </button>
+        <button
           onClick={handleReport}
           disabled={reporting || reported}
           className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${
@@ -129,6 +228,22 @@ export default function RecordCard({ record }: { record: RecordData }) {
           {reported ? "✅ 已举报" : reporting ? "..." : "🚩 举报"}
         </button>
       </div>
+
+      <LoginDialog
+        open={showLogin}
+        title="登录后收藏评价"
+        description="输入手机号或邮箱即可登录。"
+        value={loginInput}
+        error={loginError}
+        loading={logging}
+        onChange={setLoginInput}
+        onClose={() => {
+          setShowLogin(false);
+          setLoginError("");
+          setLoginInput("");
+        }}
+        onSubmit={handleLogin}
+      />
     </div>
   );
 }

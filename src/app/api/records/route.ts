@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, companyName, city, title, content, images, actualPosition, salaryRange, workContent, isConsistentWithJD, userId } = body;
+    const { type, companyName, city, title, content, images, rating, actualPosition, salaryRange, workContent, isConsistentWithJD, userId } = body;
 
     // Validate required fields
     if (!type || !companyName || !city || !title || !content) {
@@ -12,6 +12,10 @@ export async function POST(request: NextRequest) {
         { error: "请填写必要字段（类型、公司名称、城市、标题、内容）" },
         { status: 400 }
       );
+    }
+
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return NextResponse.json({ error: "请选择 1-5 星评分" }, { status: 400 });
     }
 
     // Find or create company
@@ -41,6 +45,7 @@ export async function POST(request: NextRequest) {
         title,
         content,
         images: JSON.stringify(images || []),
+        rating,
         city: city || "",
         actualPosition: actualPosition || null,
         salaryRange: salaryRange || null,
@@ -50,6 +55,18 @@ export async function POST(request: NextRequest) {
         userId: userId ? parseInt(userId) : null,
       },
     });
+
+    if (record.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: record.userId,
+          type: "RECORD_SUBMITTED",
+          title: "记录已提交",
+          content: "你的记录已进入审核队列，审核通过后会展示给其他求职者。",
+          link: "/account?tab=records",
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,

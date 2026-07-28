@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LoginDialog from "@/components/LoginDialog";
 import RecordCard from "@/components/RecordCard";
 import type { CompanyExternalProfile } from "@/lib/company-profile";
-import type { RecordData } from "@/types";
+import type { RecordData, RecordType } from "@/types";
 
 interface CompanyInfo {
   id: number;
@@ -19,6 +19,28 @@ interface CompanyInfo {
   cities: string[];
   createdAt: string;
   externalProfile: CompanyExternalProfile;
+  ratingSummary: {
+    average: number | null;
+    count: number;
+    byType: Partial<Record<RecordType, { average: number; count: number }>>;
+  };
+}
+
+const ratingTypeLabels: Record<RecordType, string> = {
+  JD_SNAPSHOT: "招聘 JD",
+  CHAT_SCREENSHOT: "HR 对话",
+  INTERVIEW_EXPERIENCE: "面试经历",
+};
+
+function RatingStars({ rating }: { rating: number | null }) {
+  const filled = rating ? Math.round(rating) : 0;
+  return (
+    <span className="tracking-[0.12em] text-amber-400" aria-label={rating ? `${rating.toFixed(1)} 分` : "暂无评分"}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <span key={star}>{star <= filled ? "★" : "☆"}</span>
+      ))}
+    </span>
+  );
 }
 
 function ScoreBadge({ score }: { score: number }) {
@@ -78,6 +100,31 @@ export default function CompanyPageClient({
   const [loginInput, setLoginInput] = useState("");
   const [logging, setLogging] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [favorited, setFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = localStorage.getItem("job_insight_user");
+        if (!raw) return;
+        const currentUser = JSON.parse(raw) as { id: number };
+        void fetch(`/api/account/favorites?kind=company&id=${company.id}`, {
+          headers: { "x-user-id": String(currentUser.id) },
+        }).then((response) => response.ok ? response.json() : null).then((result) => {
+          if (result) setFavorited(Boolean(result.favorited));
+        });
+        void fetch("/api/account/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-id": String(currentUser.id) },
+          body: JSON.stringify({ companyId: company.id }),
+        });
+      } catch {
+        // Ignore stale local account data.
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [company.id]);
 
   const cityRecords = selectedCity
     ? allRecords.filter((record) => record.city === selectedCity)
@@ -134,6 +181,33 @@ export default function CompanyPageClient({
     setShowLogin(true);
   };
 
+  const toggleFavorite = async () => {
+    if (favoriteLoading) return;
+    let currentUser: { id: number } | null = null;
+    try {
+      const raw = localStorage.getItem("job_insight_user");
+      currentUser = raw ? JSON.parse(raw) : null;
+    } catch {
+      currentUser = null;
+    }
+    if (!currentUser) {
+      setShowLogin(true);
+      return;
+    }
+
+    setFavoriteLoading(true);
+    try {
+      const response = await fetch("/api/account/favorites", {
+        method: favorited ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": String(currentUser.id) },
+        body: JSON.stringify({ kind: "company", id: company.id }),
+      });
+      if (response.ok) setFavorited(!favorited);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
   const externalItems = useMemo(() => company.externalProfile.items, [company.externalProfile.items]);
 
   return (
@@ -156,6 +230,15 @@ export default function CompanyPageClient({
               ) : null}
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => void toggleFavorite()}
+            disabled={favoriteLoading}
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm transition ${favorited ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}
+            title={favorited ? "取消收藏公司" : "收藏公司"}
+          >
+            {favorited ? "★ 已收藏" : "☆ 收藏公司"}
+          </button>
         </div>
 
         {company.description ? (
@@ -174,6 +257,35 @@ export default function CompanyPageClient({
             ))}
           </div>
         ) : null}
+
+        <div className="mt-5 border-t border-slate-100 pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-900">用户体验评分</p>
+              <p className="mt-1 text-xs text-slate-400">基于已通过审核的用户记录</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <RatingStars rating={company.ratingSummary.average} />
+              <span className="text-lg font-semibold text-slate-950">
+                {company.ratingSummary.average ? company.ratingSummary.average.toFixed(1) : "暂无"}
+                <span className="ml-1 text-xs font-normal text-slate-400">/ 5</span>
+              </span>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {(Object.keys(ratingTypeLabels) as RecordType[]).map((type) => {
+              const summary = company.ratingSummary.byType[type];
+              return (
+                <div key={type} className="rounded-xl bg-slate-50 px-3 py-3 text-center">
+                  <p className="text-xs text-slate-500">{ratingTypeLabels[type]}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    {summary ? `${summary.average.toFixed(1)} / 5` : "暂无"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_48px_rgba(15,23,42,0.06)]">

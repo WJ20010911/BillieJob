@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { parseCompanyExternalProfile } from "@/lib/company-profile";
-import type { RecordData } from "@/types";
+import type { RecordData, RecordType } from "@/types";
 import CompanyPageClient from "./client";
 
 async function getCompany(id: number) {
@@ -71,6 +71,43 @@ async function getCompanyRecords(companyId: number): Promise<RecordData[]> {
   }
 }
 
+async function getCompanyRatings(companyId: number): Promise<Array<{ type: string; rating: number | null }>> {
+  try {
+    return await prisma.record.findMany({
+      where: { companyId, status: "APPROVED", isReported: false },
+      select: { type: true, rating: true },
+    });
+  } catch {
+    return [];
+  }
+}
+
+function getRatingSummary(records: Array<{ type: string; rating: number | null }>) {
+  const ratedRecords = records.filter((record) => record.rating !== null);
+  const byType = {} as Partial<Record<RecordType, { average: number; count: number }>>;
+
+  for (const type of ["JD_SNAPSHOT", "CHAT_SCREENSHOT", "INTERVIEW_EXPERIENCE"] as RecordType[]) {
+    const typeRatings = ratedRecords
+      .filter((record) => record.type === type)
+      .map((record) => record.rating as number);
+
+    if (typeRatings.length > 0) {
+      byType[type] = {
+        average: typeRatings.reduce((sum, rating) => sum + rating, 0) / typeRatings.length,
+        count: typeRatings.length,
+      };
+    }
+  }
+
+  return {
+    average: ratedRecords.length > 0
+      ? ratedRecords.reduce((sum, record) => sum + (record.rating as number), 0) / ratedRecords.length
+      : null,
+    count: ratedRecords.length,
+    byType,
+  };
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -104,16 +141,19 @@ export default async function CompanyPage({
 
   if (Number.isNaN(companyId)) notFound();
 
-  const [company, initialRecords] = await Promise.all([
+  const [company, initialRecords, ratingRecords] = await Promise.all([
     getCompany(companyId),
     getCompanyRecords(companyId),
+    getCompanyRatings(companyId),
   ]);
 
   if (!company) notFound();
 
+  const ratingSummary = getRatingSummary(ratingRecords);
+
   return (
     <CompanyPageClient
-      company={company}
+      company={{ ...company, ratingSummary }}
       initialCity={city || ""}
       initialRecords={initialRecords}
     />
