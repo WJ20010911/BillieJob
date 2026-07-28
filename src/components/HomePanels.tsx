@@ -75,9 +75,26 @@ export default function HomePanels({
       }
     };
 
+    const handleScroll = () => {
+      if (lockedRef.current) return;
+      const panels = Array.from(shell.querySelectorAll<HTMLElement>("[data-home-panel]"));
+      let closestIndex = 0;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      for (const [index, panel] of panels.entries()) {
+        const distance = Math.abs(panel.offsetTop - shell.scrollTop);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      }
+      panelIndexRef.current = closestIndex;
+    };
+
     shell.addEventListener("wheel", handleWheel, { passive: false });
+    shell.addEventListener("scroll", handleScroll, { passive: true });
     return () => {
       shell.removeEventListener("wheel", handleWheel);
+      shell.removeEventListener("scroll", handleScroll);
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current);
       }
@@ -101,7 +118,7 @@ export default function HomePanels({
             onClick={() => moveToPanel(1)}
             className="mt-10 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-900 shadow-[0_16px_40px_rgba(15,23,42,0.08)] transition hover:border-slate-300 hover:bg-slate-50"
           >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-[clamp(1rem,3vw,1.25rem)] w-[clamp(1rem,3vw,1.25rem)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14m0 0l-5-5m5 5l5-5" />
             </svg>
           </button>

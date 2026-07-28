@@ -68,17 +68,17 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color:rgba(255,253,248,0.84)] backdrop-blur-xl">
-          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-            <Link href="/" className="flex items-baseline gap-2 text-slate-950 transition hover:text-slate-700">
+          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 overflow-x-auto px-4">
+            <Link href="/" className="flex shrink-0 items-baseline gap-2 text-slate-950 transition hover:text-slate-700">
              <span className="font-[var(--font-display-serif)] text-xl font-semibold tracking-[0.08em]">
                BillieJob
              </span>
             </Link>
-            <nav className="flex items-center gap-2 text-sm">
-              <Link href="/upload" className="inline-flex h-10 items-center justify-center rounded-xl border-2 border-slate-950 bg-white px-3 font-bold text-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:bg-slate-50 sm:px-4">
+            <nav className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm">
+              <Link href="/upload" className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border-2 border-slate-950 bg-white px-3 text-xs font-bold text-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:bg-slate-50 sm:px-4 sm:text-sm">
                 分享记录
               </Link>
-              <Link href="/analyze" className="inline-flex h-10 items-center justify-center rounded-xl border-2 border-cyan-700 bg-cyan-600 px-3 font-bold text-white shadow-[0_4px_0_rgba(8,145,178,0.2)] transition hover:-translate-y-0.5 hover:bg-cyan-700 sm:px-4">
+              <Link href="/analyze" className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border-2 border-cyan-700 bg-cyan-600 px-3 text-xs font-bold text-white shadow-[0_4px_0_rgba(8,145,178,0.2)] transition hover:-translate-y-0.5 hover:bg-cyan-700 sm:px-4 sm:text-sm">
                 职位分析
               </Link>
               <UserMenu />

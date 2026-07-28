@@ -31,8 +31,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("PENDING");
+  const [activeSection, setActiveSection] = useState<"audit" | "config">("audit");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [ocrConfigured, setOcrConfigured] = useState<boolean | null>(null);
+  const [ocrKey, setOcrKey] = useState("");
+  const [ocrSaving, setOcrSaving] = useState(false);
+  const [ocrMessage, setOcrMessage] = useState("");
   const [aiConfig, setAIConfig] = useState<AIConfig | null>(null);
   const [aiKey, setAIKey] = useState("");
   const [aiSaving, setAISaving] = useState(false);
@@ -69,13 +73,34 @@ export default function AdminDashboard() {
   }, [filter, router]);
 
   useEffect(() => {
-    fetch("/api/analyze/ocr")
+    fetch("/api/admin/ocr-config")
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (data) setOcrConfigured(Boolean(data.configured));
       })
       .catch(() => setOcrConfigured(false));
   }, []);
+
+  const saveOCRConfiguration = async () => {
+    setOcrSaving(true);
+    setOcrMessage("");
+    try {
+      const response = await fetch("/api/admin/ocr-config", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: ocrKey }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "OCR 配置保存失败");
+      setOcrConfigured(Boolean(data.configured));
+      setOcrKey("");
+      setOcrMessage("OCR 配置已保存，密钥已加密存储。环境变量仍可作为回退配置。 ");
+    } catch (error) {
+      setOcrMessage(error instanceof Error ? error.message : "OCR 配置保存失败");
+    } finally {
+      setOcrSaving(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/admin/ai-config")
@@ -151,17 +176,36 @@ export default function AdminDashboard() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">内容审核</h1>
-      </div>
-
-      <div className="mb-6 border-2 border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-        <div className="font-bold">OCR.space 服务状态</div>
-        <div className="mt-1 text-xs text-cyan-800">
-          {ocrConfigured === null ? "正在检查配置..." : ocrConfigured ? "已配置。密钥仅存在服务器环境变量中，浏览器和 GitHub 都不会看到。" : "未配置。请在服务器 .env.local 中设置 OCR_SPACE_API_KEY，管理员页面不会保存或显示密钥。"}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">管理后台</h1>
+          <p className="mt-1 text-sm text-slate-500">处理用户提交内容，并管理第三方服务配置。</p>
         </div>
       </div>
 
-      {aiConfig ? (
+      <div className="mb-6 flex border-b-2 border-slate-200">
+        <button type="button" onClick={() => setActiveSection("audit")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "audit" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>审核</button>
+        <button type="button" onClick={() => setActiveSection("config")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "config" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>配置</button>
+      </div>
+
+      {activeSection === "config" ? (
+        <div className="space-y-6">
+          <section className="border-2 border-cyan-700 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
+            <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end">
+              <div>
+                <h2 className="text-lg font-bold text-slate-950">OCR.space 配置</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">用于从招聘平台截图中提取文字。密钥只在服务器端使用，不会返回浏览器或提交到 GitHub。</p>
+              </div>
+              <span className={ocrConfigured ? "border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700" : "border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700"}>{ocrConfigured === null ? "检查中" : ocrConfigured ? "密钥已配置" : "尚未配置"}</span>
+            </div>
+            <label className="mt-5 block text-sm font-semibold text-slate-800">OCR.space API 密钥<input value={ocrKey} onChange={(event) => setOcrKey(event.target.value)} type="password" placeholder={ocrConfigured ? "已配置，留空表示不修改" : "粘贴 OCR.space API 密钥"} className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => void saveOCRConfiguration()} disabled={ocrSaving || !ocrKey.trim()} className="border-2 border-slate-950 bg-cyan-600 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-700 disabled:opacity-50">{ocrSaving ? "保存中..." : "保存 OCR 配置"}</button>
+              {ocrConfigured ? <button type="button" onClick={async () => { setOcrSaving(true); setOcrMessage(""); try { const response = await fetch("/api/admin/ocr-config", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clearApiKey: true }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "清除失败"); setOcrConfigured(false); setOcrMessage("已清除数据库中的 OCR 密钥；如果环境变量仍存在，服务仍会继续使用环境变量。"); } catch (error) { setOcrMessage(error instanceof Error ? error.message : "清除失败"); } finally { setOcrSaving(false); } }} disabled={ocrSaving} className="border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">清除后台密钥</button> : null}
+            </div>
+            {ocrMessage ? <p className="mt-3 border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900">{ocrMessage}</p> : null}
+          </section>
+
+          {aiConfig ? (
         <section className="mb-6 border-2 border-slate-900 bg-white p-5 shadow-[0_10px_30px_rgba(15,23,42,0.08)]">
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end">
             <div>
@@ -187,7 +231,10 @@ export default function AdminDashboard() {
           </div>
           {aiMessage ? <p className="mt-3 border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900">{aiMessage}</p> : null}
         </section>
-      ) : null}
+          ) : null}
+        </div>
+      ) : (
+        <>
 
       <div className="mb-6 flex gap-2">
         {[
@@ -276,6 +323,8 @@ export default function AdminDashboard() {
             </div>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   );

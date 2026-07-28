@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 const CONFIG_KEY = "ai_analysis";
+const OCR_CONFIG_KEY = "ocr_space";
 const DEFAULT_ENDPOINT = "https://api.deepseek.com/chat/completions";
 
 export interface AIConfig {
@@ -106,6 +107,30 @@ export async function saveAIConfig(input: {
     update: { value },
     create: { key: CONFIG_KEY, value },
   });
+}
+
+export async function getOCRApiKey() {
+  const setting = await prisma.appSetting.findUnique({ where: { key: OCR_CONFIG_KEY } });
+  if (setting?.value) return decrypt(setting.value);
+  return process.env.OCR_SPACE_API_KEY?.trim() || "";
+}
+
+export async function saveOCRApiKey(apiKey: string, clearApiKey = false) {
+  const value = clearApiKey ? "" : apiKey.trim();
+  if (!value) {
+    await prisma.appSetting.deleteMany({ where: { key: OCR_CONFIG_KEY } });
+    return;
+  }
+
+  await prisma.appSetting.upsert({
+    where: { key: OCR_CONFIG_KEY },
+    update: { value: encrypt(value) },
+    create: { key: OCR_CONFIG_KEY, value: encrypt(value) },
+  });
+}
+
+export async function hasOCRApiKey() {
+  return Boolean(await getOCRApiKey());
 }
 
 function contentFromResponse(payload: unknown) {

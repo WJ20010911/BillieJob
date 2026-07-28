@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getOCRApiKey } from "@/lib/ai-analysis";
 
 const SESSION_COOKIE = "admin_session";
 
 export async function POST(request: NextRequest) {
-  const apiKey = process.env.OCR_SPACE_API_KEY?.trim();
+  const apiKey = await getOCRApiKey();
   if (!apiKey) {
     return NextResponse.json({ error: "OCR.space API key is not configured on the server" }, { status: 503 });
   }
@@ -48,5 +49,5 @@ export async function GET(request: NextRequest) {
   if (request.cookies.get(SESSION_COOKIE)?.value !== "admin-logged-in") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ configured: Boolean(process.env.OCR_SPACE_API_KEY?.trim()) });
+  return NextResponse.json({ configured: Boolean(await getOCRApiKey()) });
 }

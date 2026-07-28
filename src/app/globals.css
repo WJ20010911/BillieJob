@@ -83,12 +83,16 @@ body:has(.home-shell) {
 
 @media (max-width: 767px) {
   .home-shell {
-    height: auto;
-    overflow-y: visible;
+    height: calc(100svh - 3.5rem);
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    scroll-snap-type: y mandatory;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
 
   .home-panel {
-    height: auto;
+    height: calc(100svh - 3.5rem);
     min-height: calc(100svh - 3.5rem);
   }
 }
