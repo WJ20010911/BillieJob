@@ -21,7 +21,7 @@ interface AnalysisResult {
 }
 
 const WORDS = {
-  missing: "\u672a\u8bc6\u522b\u5230",
+  missing: "\u672a\u5728\u6587\u5b57\u4e2d\u63d0\u53ca",
   salary: "\u85aa\u8d44",
   work: "\u5de5\u4f5c",
   duties: "\u5c97\u4f4d\u804c\u8d23",
@@ -49,14 +49,15 @@ function firstMatch(text: string, pattern: RegExp) {
 function snippet(text: string, pattern: RegExp, limit = 100) {
   const index = text.search(pattern);
   if (index < 0) return "";
-  return text.slice(index, index + limit).split(/[\u3002\uff1b;.!\uff01\uff1f]/u)[0].trim();
+  return text.slice(index, index + limit).split(/[\u3002\uff1b\uff0c,;.!\uff01\uff1f]/u)[0].trim();
 }
 
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
   const text = rawText.replace(/\s+/g, " ").trim();
   const findings: Finding[] = [];
   const fields: AnalysisResult["fields"] = {};
-  const salaryNumber = firstMatch(text, /\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)(?:\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\/\u6708|\/\u5e74)?/u);
+  const money = /\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)(?:\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\/\u6708|\/\u5e74|\/\u5929|\/\u5c0f\u65f6)?/u;
+  const salaryNumber = firstMatch(text, money);
   const salaryFound = Boolean(salaryNumber) || has(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u);
   const salaryUnclear = has(text, /\u9762\u8bae|\u85aa\u8d44\u53ef\u8c08|\u5f85\u9047\u4f18\u539a|\u9ad8\u85aa|\u4e30\u539a/u) && !salaryNumber;
   fields.salary = { value: salaryNumber || (salaryUnclear ? "\u9762\u8bae/\u7b3c\u7edf\u8868\u8ff0" : salaryFound ? snippet(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u) : WORDS.missing), state: salaryFound ? (salaryUnclear ? "unclear" : "found") : "missing" };
@@ -73,8 +74,27 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const requirementsValue = snippet(text, /\u4efb\u804c\u8981\u6c42|\u4efb\u804c\u8d44\u683c|\u5c97\u4f4d\u8981\u6c42|\u5b66\u5386|\u7ecf\u9a8c\u8981\u6c42|\u6280\u80fd\u8981\u6c42|\u672c\u79d1|\u5927\u4e13|\u5e74\u4ee5\u4e0a\u7ecf\u9a8c/u);
   fields.requirements = { value: requirementsValue || WORDS.missing, state: requirementsValue ? "found" : "missing" };
 
-  const hoursValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u52a0\u73ed|996|\u671d\u4e5d\u665a\u516d|\u5f39\u6027\u5de5\u4f5c|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4/u);
-  fields.hours = { value: hoursValue || WORDS.missing, state: hoursValue ? "found" : "missing" };
+  const workTimePattern = /\d{1,2}(?::\d{2})?\s*[-~\u81f3\u5230]\s*\d{1,2}(?::\d{2})?|\u671d\u4e5d\u665a\u516d|\u65e9\u4e5d\u665a\u516d|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u73ed\u6b21/u;
+  const workTimeValue = firstMatch(text, workTimePattern) || snippet(text, workTimePattern, 70);
+  fields.workTime = { value: workTimeValue || WORDS.missing, state: workTimeValue ? "found" : "missing" };
+  fields.hours = { value: workTimeValue || WORDS.missing, state: workTimeValue ? "found" : "missing" };
+
+  const dailyHoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:\u5c0f\u65f6|h)(?:\s*\/\s*(?:\u5929|\u65e5))?|(?:\u6bcf\u5929|\u6bcf\u65e5)\s*(\d+(?:\.\d+)?)\s*(?:\u5c0f\u65f6|h)/iu);
+  const dailyHoursValue = firstMatch(text, /(?:\u6bcf\u5929|\u6bcf\u65e5|\u65e5\u5747)\s*\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)|\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)\s*\/\s*(?:\u5929|\u65e5)|\d+(?:\.\d+)?\s*\u5c0f\u65f6\u5de5\u4f5c\u5236/iu);
+  fields.dailyHours = { value: dailyHoursValue || WORDS.missing, state: dailyHoursValue ? "found" : "missing" };
+  const weeklyHoursDirect = firstMatch(text, /(?:\u6bcf\u5468|\u5468\u5de5)\s*\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)|\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)\s*\/\s*(?:\u5468|\u5468\u5de5)/iu);
+  const weeklyDaysMatch = text.match(/(?:\u6bcf\u5468\s*)?(\d+)\s*\u5929(?:\u5de5\u4f5c)?/u);
+  const weeklyDaysValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u505a\u516d\u4f11\u4e00|\u6bcf\u5468\s*[\u4e00-\u9fa5\d]+\s*(?:\u5929|\u65e5)/u);
+  const dailyHours = dailyHoursMatch ? Number(dailyHoursMatch[1] || dailyHoursMatch[2]) : 0;
+  const weeklyHoursValue = weeklyHoursDirect || (dailyHours && weeklyDaysMatch ? "\u7ea6 " + dailyHours * Number(weeklyDaysMatch[1]) + " \u5c0f\u65f6/\u5468 (\u6309\u6bcf\u65e5 " + dailyHours + " \u5c0f\u65f6\u3001\u6bcf\u5468 " + weeklyDaysMatch[1] + " \u5929\u63a8\u7b97)" : "");
+  fields.weeklyHours = { value: weeklyHoursValue || WORDS.missing, state: weeklyHoursDirect ? "found" : weeklyHoursValue ? "unclear" : "missing" };
+  fields.weeklyWorkDays = { value: weeklyDaysValue || (weeklyDaysMatch ? "\u6bcf\u5468 " + weeklyDaysMatch[1] + " \u5929" : WORDS.missing), state: weeklyDaysValue || weeklyDaysMatch ? "found" : "missing" };
+  const shiftPattern = /\u5012\u73ed|\u8f6e\u73ed|\u6392\u73ed|\u4e24\u73ed\u5012|\u4e09\u73ed\u5012|\u65e9\u665a\u73ed|\u767d\u591c\u73ed|\u591c\u73ed|\u4e0d\u5012\u73ed|\u65e0\u591c\u73ed/u;
+  const shiftValue = snippet(text, shiftPattern, 70);
+  fields.shiftWork = { value: shiftValue || WORDS.missing, state: shiftValue ? "found" : "missing" };
+  const overtimePattern = /\u52a0\u73ed[^\u3002\uff1b;.\uff01\uff1f]{0,50}|\u4e0d\u52a0\u73ed|\u65e0\u52a0\u73ed|\u8c03\u4f11|\u52a0\u73ed\u8d39|\u52a0\u73ed\u9891\u7387/u;
+  const overtimeValue = firstMatch(text, overtimePattern);
+  fields.overtimePolicy = { value: overtimeValue || WORDS.missing, state: overtimeValue ? "found" : "missing" };
 
   const benefitsValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1|\u5e26\u85aa|\u798f\u5229|\u8865\u8d34|\u5e74\u7ec8\u5956|\u9910\u8865|\u623f\u8865/u);
   fields.benefits = { value: benefitsValue || WORDS.missing, state: benefitsValue ? "found" : "missing" };
@@ -85,19 +105,62 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const processValue = firstMatch(text, /\u9762\u8bd5|\u7b14\u8bd5|\u62db\u8058\u6d41\u7a0b|\u51e0\u8f6e|\u5165\u804c\u6d41\u7a0b|\u8bd5\u7528\u671f/u);
   fields.process = { value: processValue || WORDS.missing, state: processValue ? "found" : "missing" };
 
+  const basePattern = /\u65e0\u8d23\u5e95\u85aa|\u65e0\u8d23\u5e95\u85aa|\u57fa\u672c\u5de5\u8d44|\u56fa\u5b9a\u5de5\u8d44|\u5e95\u85aa/u;
+  const commissionPattern = /\u63d0\u6210(?:\u6bd4\u4f8b|\u70b9\u6570)?|\u9500\u552e\u63d0\u6210|\u7eaf\u63d0\u6210|\u9ad8\u63d0\u6210/u;
+  const performancePattern = /\u7ee9\u6548(?:\u5956\u91d1|\u5de5\u8d44)?|\u7ee9\u6548\u63d0\u6210/u;
+  const allowancePattern = /\u8865\u8d34|\u8865\u52a9/u;
+  const baseValue = snippet(text, basePattern, 70);
+  const commissionValue = snippet(text, commissionPattern, 70);
+  const performanceValue = snippet(text, performancePattern, 70);
+  const salaryComponents = [baseValue, commissionValue, performanceValue].filter(Boolean).join("\uff1b");
+  fields.salaryStructure = { value: salaryComponents || WORDS.missing, state: salaryComponents ? "found" : "missing" };
+  fields.salaryBase = { value: baseValue || WORDS.missing, state: baseValue ? (money.test(baseValue) ? "found" : "unclear") : "missing" };
+  fields.commission = { value: commissionValue || WORDS.missing, state: commissionValue ? (money.test(commissionValue) || has(commissionValue, /\d+\s*%/u) ? "found" : "unclear") : "missing" };
+  fields.performance = { value: performanceValue || WORDS.missing, state: performanceValue ? (money.test(performanceValue) ? "found" : "unclear") : "missing" };
+
+  const monthlyAllowanceValue = snippet(text, /\u6bcf\u6708[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u6708\u8865\u8d34|\u6708\u5ea6\u8865\u8d34/u, 70);
+  const dailyAllowanceValue = snippet(text, /\u6bcf\u5929[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u6bcf\u65e5[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u65e5\u8865\u8d34/u, 70);
+  const mealValue = snippet(text, /\u9910\u8865|\u996d\u8865|\u9965\u98df\u8865\u8d34|\u9910\u8d39\u8865\u8d34/u, 70);
+  const transportValue = snippet(text, /\u4ea4\u901a\u8865\u8d34|\u8f66\u8865|\u4ea4\u901a\u8d39|\u8f66\u8d39\u8865\u8d34/u, 70);
+  const housingValue = snippet(text, /\u623f\u8865|\u4f4f\u623f\u8865\u8d34|\u4f4f\u5bbf\u8865\u8d34/u, 70);
+  const bonusValue = snippet(text, /\u5e74\u7ec8\u5956|\u5e74\u5ea6\u5956\u91d1|\u5341\u4e09\u85aa|\u5341\u56db\u85aa/u, 70);
+  const socialValue = snippet(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1/u, 70);
+  fields.monthlyAllowance = { value: monthlyAllowanceValue || WORDS.missing, state: monthlyAllowanceValue ? "found" : "missing" };
+  fields.dailyAllowance = { value: dailyAllowanceValue || WORDS.missing, state: dailyAllowanceValue ? "found" : "missing" };
+  fields.mealAllowance = { value: mealValue || WORDS.missing, state: mealValue ? "found" : "missing" };
+  fields.transportAllowance = { value: transportValue || WORDS.missing, state: transportValue ? "found" : "missing" };
+  fields.housingAllowance = { value: housingValue || WORDS.missing, state: housingValue ? "found" : "missing" };
+  fields.bonus = { value: bonusValue || WORDS.missing, state: bonusValue ? "found" : "missing" };
+  fields.socialBenefits = { value: socialValue || WORDS.missing, state: socialValue ? "found" : "missing" };
+
   if (!salaryFound) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u7f3a\u5c11\u660e\u786e\u7684\u85aa\u8d44\u8303\u56f4", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u6708\u85aa\u3001\u5e74\u85aa\u6216\u85aa\u8d44\u533a\u95f4\u3002", suggestion: "\u786e\u8ba4\u6708\u85aa/\u5e74\u85aa\u8303\u56f4\u3001\u56fa\u5b9a\u85aa\u8d44\u3001\u7ee9\u6548\u63d0\u6210\u548c\u8bd5\u7528\u671f\u85aa\u8d44\u3002" });
   else if (salaryUnclear) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u85aa\u8d44\u53ea\u6709\u9762\u8bae\u6216\u7b3c\u7edf\u8868\u8ff0", level: "medium", evidence: `\u8bc6\u522b\u5230\uff1a${fields.salary.value}\uff0c\u4f46\u6ca1\u6709\u5177\u4f53\u6570\u5b57\u3002`, suggestion: "\u8981\u6c42\u5bf9\u65b9\u7ed9\u51fa\u5e95\u85aa\u3001\u7ee9\u6548\u3001\u63d0\u6210\u548c\u8bd5\u7528\u671f\u7684\u5177\u4f53\u8303\u56f4\u3002" });
   if (!dutyFound) findings.push({ category: "\u5de5\u4f5c\u5185\u5bb9", item: "\u7f3a\u5c11\u5c97\u4f4d\u804c\u8d23", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5c97\u4f4d\u804c\u8d23\u6216\u5de5\u4f5c\u5185\u5bb9\u6bb5\u843d\u3002", suggestion: "\u8981\u6c42\u8865\u5145\u65e5\u5e38\u4efb\u52a1\u3001\u4ea4\u4ed8\u76ee\u6807\u3001\u6c47\u62a5\u5bf9\u8c61\u548c\u5de5\u4f5c\u8fb9\u754c\u3002" });
   else if (dutyVague) findings.push({ category: "\u5de5\u4f5c\u5185\u5bb9", item: "\u5de5\u4f5c\u5185\u5bb9\u53ef\u80fd\u6a21\u7cca", level: "medium", evidence: `\u8bc6\u522b\u5230\uff1a${fields.duties.value}`, suggestion: "\u628a\u9ad8\u9891\u4efb\u52a1\u3001\u5de5\u4f5c\u5360\u6bd4\u3001\u52a0\u73ed\u573a\u666f\u548c\u8de8\u5c97\u804c\u8d23\u95ee\u6e05\u695a\u3002" });
   if (!locationValue) findings.push({ category: "\u5de5\u4f5c\u5730\u70b9", item: "\u5de5\u4f5c\u5730\u70b9\u4e0d\u660e\u786e", level: "medium", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u57ce\u5e02\u3001\u529e\u516c\u5730\u70b9\u6216\u8fdc\u7a0b\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u529e\u516c\u57ce\u5e02\u3001\u5177\u4f53\u533a\u57df\u3001\u662f\u5426\u51fa\u5dee\u4ee5\u53ca\u662f\u5426\u652f\u6301\u8fdc\u7a0b\u3002" });
   if (!requirementsValue) findings.push({ category: "\u4efb\u804c\u8981\u6c42", item: "\u7f3a\u5c11\u4efb\u804c\u8981\u6c42", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5b66\u5386\u3001\u7ecf\u9a8c\u6216\u6280\u80fd\u8981\u6c42\u3002", suggestion: "\u786e\u8ba4\u786c\u6027\u95e8\u69db\u3001\u4f18\u5148\u6280\u80fd\u548c\u7b5b\u9009\u89c4\u5219\u3002" });
-  if (!hoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5de5\u4f5c\u65f6\u95f4\u548c\u52a0\u73ed\u5236\u5ea6\u7f3a\u5931", level: "medium", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u53cc\u4f11\u3001\u5de5\u4f5c\u65f6\u6bb5\u3001\u52a0\u73ed\u6216\u8c03\u4f11\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u5de5\u4f5c\u65e5\u3001\u4e0a\u4e0b\u73ed\u65f6\u95f4\u3001\u52a0\u73ed\u9891\u7387\u3001\u52a0\u73ed\u8d39\u6216\u8c03\u4f11\u89c4\u5219\u3002" });
+  if (!workTimeValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5de5\u4f5c\u65f6\u95f4\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5230\u4e0a\u4e0b\u73ed\u65f6\u95f4\u3001\u73ed\u6b21\u6216\u5de5\u4f5c\u65f6\u6bb5\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5929\u5b9e\u9645\u5de5\u4f5c\u65f6\u6bb5\u3001\u4f11\u606f\u65f6\u95f4\u548c\u662f\u5426\u5b58\u5728\u7279\u6b8a\u73ed\u6b21\u3002" });
+  if (!dailyHoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u65e5\u5de5\u4f5c\u5c0f\u65f6\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u6bcf\u5929\u5b9e\u9645\u5de5\u4f5c\u5c0f\u65f6\u3002", suggestion: "\u786e\u8ba4\u6bcf\u65e5\u5de5\u4f5c\u5c0f\u65f6\u3001\u5348\u4f11\u662f\u5426\u8ba1\u5165\u3001\u4ee5\u53ca\u662f\u5426\u5b58\u5728\u9690\u5f62\u5ef6\u65f6\u3002" });
+  if (!weeklyHoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u5468\u5de5\u65f6\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5230\u6bcf\u5468\u5de5\u65f6\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5468\u5b9e\u9645\u5de5\u4f5c\u5c0f\u65f6\uff0c\u4ee5\u53ca\u4f11\u606f\u65e5\u662f\u5426\u8ba1\u5165\u5de5\u65f6\u3002" });
+  if (!weeklyDaysValue && !weeklyDaysMatch) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u53cc\u4f11\u3001\u5927\u5c0f\u5468\u6216\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5468\u4e0a\u73ed\u51e0\u5929\u3001\u662f\u5426\u5927\u5c0f\u5468\u6216\u6708\u4f11\u3002" });
+  if (!shiftValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5012\u73ed\u8981\u6c42\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5012\u73ed\u3001\u591c\u73ed\u6216\u65e0\u5012\u73ed\u8bf4\u660e\u3002", suggestion: "\u786e\u8ba4\u662f\u5426\u8f6e\u73ed\u3001\u65e9\u665a\u73ed\u65f6\u6bb5\u3001\u591c\u73ed\u9891\u7387\u548c\u591c\u73ed\u8865\u8d34\u3002" });
+  if (!overtimeValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u52a0\u73ed\u653f\u7b56\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u52a0\u73ed\u3001\u8c03\u4f11\u6216\u52a0\u73ed\u8d39\u89c4\u5219\u3002", suggestion: "\u8ffd\u95ee\u52a0\u73ed\u662f\u5426\u5e38\u6001\u3001\u662f\u5426\u8ba1\u85aa\u6216\u8c03\u4f11\u3002" });
+  if (!baseValue) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u57fa\u672c\u5de5\u8d44/\u65e0\u8d23\u5e95\u85aa\u672a\u8bf4\u660e", level: "high", evidence: "\u672a\u8bc6\u522b\u5230\u57fa\u672c\u5de5\u8d44\u6216\u65e0\u8d23\u5e95\u85aa\u53ca\u5176\u91d1\u989d\u3002", suggestion: "\u786e\u8ba4\u56fa\u5b9a\u5e95\u85aa\u91d1\u989d\u3001\u662f\u5426\u65e0\u8d23\u5e95\u85aa\u3001\u8bd5\u7528\u671f\u662f\u5426\u4e00\u81f4\u3002" });
+  if (!commissionValue) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u63d0\u6210\u89c4\u5219\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u8bc6\u522b\u5230\u63d0\u6210\u6bd4\u4f8b\u3001\u8ba1\u7b97\u53e3\u5f84\u6216\u53d1\u653e\u6761\u4ef6\u3002", suggestion: "\u786e\u8ba4\u63d0\u6210\u6309\u56de\u6b3e\u3001\u9500\u552e\u989d\u8fd8\u662f\u6bdb\u5229\u8ba1\u7b97\uff0c\u5e76\u786e\u8ba4\u53d1\u653e\u65f6\u70b9\u3002" });
+  if (!performanceValue) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u7ee9\u6548\u89c4\u5219\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u8bc6\u522b\u5230\u7ee9\u6548\u91d1\u989d\u3001\u8ba1\u7b97\u89c4\u5219\u6216\u8fbe\u6210\u6807\u51c6\u3002", suggestion: "\u8ffd\u95ee\u7ee9\u6548\u5360\u6bd4\u3001\u8003\u6838\u5468\u671f\u3001\u53d1\u653e\u4e0a\u9650\u548c\u5386\u53f2\u8fbe\u6210\u7387\u3002" });
+  if (!monthlyAllowanceValue && !dailyAllowanceValue && !allowancePattern.test(text)) findings.push({ category: "\u798f\u5229\u5f85\u9047", item: "\u8865\u8d34\u660e\u7ec6\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u8bc6\u522b\u5230\u6bcf\u6708\u3001\u6bcf\u5929\u6216\u6309\u9879\u76ee\u8ba1\u7b97\u7684\u8865\u8d34\u3002", suggestion: "\u5206\u522b\u786e\u8ba4\u6bcf\u6708\u8865\u8d34\u3001\u6bcf\u5929\u8865\u8d34\u3001\u9910\u8865\u3001\u8f66\u8d39\u548c\u623f\u8865\u3002" });
+  if (!mealValue) findings.push({ category: "\u798f\u5229\u5f85\u9047", item: "\u98df\u8865\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u8bc6\u522b\u5230\u9910\u8865\u3001\u996d\u8865\u6216\u4f19\u98df\u8865\u8d34\u3002", suggestion: "\u786e\u8ba4\u662f\u5426\u63d0\u4f9b\u98df\u5802\u3001\u9910\u8865\u91d1\u989d\u548c\u53d1\u653e\u65b9\u5f0f\u3002" });
+  if (!transportValue) findings.push({ category: "\u798f\u5229\u5f85\u9047", item: "\u8f66\u8d39/\u4ea4\u901a\u8865\u8d34\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u8bc6\u522b\u5230\u8f66\u8865\u3001\u4ea4\u901a\u8d39\u6216\u51fa\u884c\u62a5\u9500\u3002", suggestion: "\u786e\u8ba4\u662f\u5426\u6709\u8f66\u8d39\u3001\u516c\u4ea4\u8865\u8d34\u3001\u51fa\u5dee\u62a5\u9500\u53ca\u62a5\u9500\u6807\u51c6\u3002" });
   if (!benefitsValue) findings.push({ category: "\u798f\u5229\u5f85\u9047", item: "\u798f\u5229\u5f85\u9047\u4e0d\u5b8c\u6574", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u793e\u4fdd\u3001\u516c\u79ef\u91d1\u6216\u5176\u4ed6\u798f\u5229\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u793e\u4fdd\u516c\u79ef\u91d1\u7f34\u7eb3\u57fa\u6570\u3001\u8bd5\u7528\u671f\u7f34\u7eb3\u60c5\u51b5\u548c\u8865\u8d34\u5956\u91d1\u3002" });
   if (!employmentValue) findings.push({ category: "\u7528\u5de5\u5173\u7cfb", item: "\u7528\u5de5\u7c7b\u578b\u4e0d\u6e05\u6670", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5168\u804c\u3001\u5b9e\u4e60\u3001\u5916\u5305\u6216\u5408\u540c\u7c7b\u578b\u3002", suggestion: "\u786e\u8ba4\u52b3\u52a8\u5408\u540c\u4e3b\u4f53\u3001\u7528\u5de5\u7c7b\u578b\u3001\u8bd5\u7528\u671f\u548c\u8f6c\u6b63\u6761\u4ef6\u3002" });
   if (!processValue) findings.push({ category: "\u62db\u8058\u6d41\u7a0b", item: "\u62db\u8058\u6d41\u7a0b\u4e0d\u900f\u660e", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u9762\u8bd5\u8f6e\u6b21\u3001\u7b14\u8bd5\u6216\u8bd5\u7528\u671f\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u9762\u8bd5\u8f6e\u6b21\u3001\u51b3\u7b56\u4eba\u3001\u53cd\u9988\u65f6\u95f4\u548c\u8bd5\u7528\u671f\u8003\u6838\u3002" });
   if (has(text, /\u65e0\u8d23\u5e95\u85aa|\u7eaf\u63d0\u6210|\u9ad8\u63d0\u6210/u) && !salaryNumber) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u53ef\u80fd\u5b58\u5728\u6536\u5165\u7ed3\u6784\u98ce\u9669", level: "high", evidence: "\u51fa\u73b0\u65e0\u8d23\u5e95\u85aa\u3001\u7eaf\u63d0\u6210\u6216\u9ad8\u63d0\u6210\uff0c\u4f46\u672a\u7ed9\u51fa\u91d1\u989d\u3002", suggestion: "\u8981\u6c42\u4e66\u9762\u786e\u8ba4\u56fa\u5b9a\u85aa\u8d44\u3001\u63d0\u6210\u53e3\u5f84\u3001\u53d1\u653e\u6761\u4ef6\u548c\u5386\u53f2\u8fbe\u6210\u7387\u3002" });
 
   const strengths: string[] = [];
+  if (weeklyHoursDirect) strengths.push("\u5468\u5de5\u65f6\uff1a" + weeklyHoursDirect);
+  if (baseValue) strengths.push("\u5e95\u85aa\uff1a" + baseValue);
+  if (commissionValue) strengths.push("\u63d0\u6210\uff1a" + commissionValue);
+  if (socialValue) strengths.push("\u793e\u4fdd\u798f\u5229\uff1a" + socialValue);
   if (salaryNumber) strengths.push(`\u85aa\u8d44\uff1a${salaryNumber}`);
   if (dutyFound && !dutyVague) strengths.push("\u5c97\u4f4d\u804c\u8d23\u6709\u5177\u4f53\u63cf\u8ff0");
   if (locationValue) strengths.push(`\u5730\u70b9\uff1a${locationValue}`);
