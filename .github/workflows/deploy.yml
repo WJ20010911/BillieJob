@@ -1,0 +1,33 @@
+name: Deploy BillieJob
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: billiejob-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy on Lighthouse
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd /var/www/BillieJob
+            git pull --ff-only origin main
+            npm ci
+            npx prisma generate
+            npx prisma migrate deploy
+            NODE_OPTIONS=--max-old-space-size=1536 npm run build
+            pm2 restart billiejob --update-env
