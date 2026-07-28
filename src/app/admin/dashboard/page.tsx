@@ -22,6 +22,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("PENDING");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [ocrConfigured, setOcrConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,6 +53,15 @@ export default function AdminDashboard() {
     };
   }, [filter, router]);
 
+  useEffect(() => {
+    fetch("/api/analyze/ocr")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data) setOcrConfigured(Boolean(data.configured));
+      })
+      .catch(() => setOcrConfigured(false));
+  }, []);
+
   const handleAction = async (id: number, status: string, rejectReason?: string) => {
     setActionLoading(id);
     try {
@@ -77,6 +87,13 @@ export default function AdminDashboard() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">内容审核</h1>
+      </div>
+
+      <div className="mb-6 border-2 border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+        <div className="font-bold">OCR.space 服务状态</div>
+        <div className="mt-1 text-xs text-cyan-800">
+          {ocrConfigured === null ? "正在检查配置..." : ocrConfigured ? "已配置。密钥仅存在服务器环境变量中，浏览器和 GitHub 都不会看到。" : "未配置。请在服务器 .env.local 中设置 OCR_SPACE_API_KEY，管理员页面不会保存或显示密钥。"}
+        </div>
       </div>
 
       <div className="mb-6 flex gap-2">

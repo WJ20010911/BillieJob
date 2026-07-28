@@ -77,7 +77,6 @@ export default function AnalyzePage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -140,14 +139,14 @@ export default function AnalyzePage() {
   const runOcr = async () => {
     if (!imageFile || ocrLoading) return;
     setOcrLoading(true);
-    setOcrProgress(0);
     setMessage("正在尝试识别截图文字，首次识别可能需要下载语言包...");
     try {
-      const { recognize } = await import("tesseract.js");
-      const recognized = await recognize(imageFile, "chi_sim+eng", {
-        logger: (info) => setOcrProgress(Math.round((info.progress || 0) * 100)),
-      });
-      const text = recognized.data.text.trim();
+      const formData = new FormData();
+      formData.append("file", imageFile);
+      const response = await fetch("/api/analyze/ocr", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "OCR request failed");
+      const text = String(data.text || "").trim();
       if (!text) throw new Error("没有识别到文字");
       setRawText(text);
       setMessage("截图文字已识别，请校对后开始分析。");
@@ -248,7 +247,7 @@ export default function AnalyzePage() {
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImage} className="hidden" />
           </label>
           {uploading ? <p className="mt-2 text-xs text-cyan-700">正在保存截图...</p> : null}
-          {imageFile ? <button type="button" onClick={() => void runOcr()} disabled={ocrLoading} className="mt-3 inline-flex h-10 items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60">{ocrLoading ? `识别中 ${ocrProgress}%` : "尝试识别截图文字"}</button> : null}
+          {imageFile ? <button type="button" onClick={() => void runOcr()} disabled={ocrLoading} className="mt-3 inline-flex h-10 items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60">{ocrLoading ? "OCR..." : "尝试识别截图文字"}</button> : null}
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold text-slate-800">分析标题<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：某公司产品经理 JD" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>

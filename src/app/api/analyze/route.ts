@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type FindingLevel = "high" | "medium" | "low";
+type FieldState = "found" | "missing" | "unclear";
 
 interface Finding {
   category: string;
@@ -14,10 +15,23 @@ interface Finding {
 interface AnalysisResult {
   riskScore: number;
   summary: string;
-  fields: Record<string, { value: string; state: "found" | "missing" | "unclear" }>;
+  fields: Record<string, { value: string; state: FieldState }>;
   findings: Finding[];
   strengths: string[];
 }
+
+const WORDS = {
+  missing: "\u672a\u8bc6\u522b\u5230",
+  salary: "\u85aa\u8d44",
+  work: "\u5de5\u4f5c",
+  duties: "\u5c97\u4f4d\u804c\u8d23",
+  location: "\u5de5\u4f5c\u5730\u70b9",
+  requirements: "\u4efb\u804c\u8981\u6c42",
+  hours: "\u5de5\u4f5c\u5236\u5ea6",
+  benefits: "\u798f\u5229\u5f85\u9047",
+  employment: "\u7528\u5de5\u7c7b\u578b",
+  process: "\u62db\u8058\u6d41\u7a0b",
+};
 
 function getUserId(request: NextRequest) {
   const value = Number(request.headers.get("x-user-id"));
@@ -28,117 +42,113 @@ function has(text: string, pattern: RegExp) {
   return pattern.test(text);
 }
 
+function firstMatch(text: string, pattern: RegExp) {
+  return text.match(pattern)?.[0]?.trim() || "";
+}
+
+function snippet(text: string, pattern: RegExp, limit = 100) {
+  const index = text.search(pattern);
+  if (index < 0) return "";
+  return text.slice(index, index + limit).split(/[\u3002\uff1b;.!\uff01\uff1f]/u)[0].trim();
+}
+
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
   const text = rawText.replace(/\s+/g, " ").trim();
   const findings: Finding[] = [];
   const fields: AnalysisResult["fields"] = {};
+  const salaryNumber = firstMatch(text, /\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)(?:\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\/\u6708|\/\u5e74)?/u);
+  const salaryFound = Boolean(salaryNumber) || has(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u);
+  const salaryUnclear = has(text, /\u9762\u8bae|\u85aa\u8d44\u53ef\u8c08|\u5f85\u9047\u4f18\u539a|\u9ad8\u85aa|\u4e30\u539a/u) && !salaryNumber;
+  fields.salary = { value: salaryNumber || (salaryUnclear ? "\u9762\u8bae/\u7b3c\u7edf\u8868\u8ff0" : salaryFound ? snippet(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u) : WORDS.missing), state: salaryFound ? (salaryUnclear ? "unclear" : "found") : "missing" };
 
-  const salaryFound = has(text, /(薪资|工资|月薪|年薪|薪酬|\d+\s*[kK万千元])/);
-  const salaryUnclear = has(text, /(面议|薪资可谈|待遇优厚|高薪|丰厚)/) && !has(text, /(\d+\s*[kK万千元])/);
-  fields.salary = { value: salaryFound ? (salaryUnclear ? "仅写明面议或高薪" : "已出现薪资信息") : "未识别到", state: salaryFound ? (salaryUnclear ? "unclear" : "found") : "missing" };
+  const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u) || snippet(text, /\u5de5\u4f5c\u5730\u70b9|\u5de5\u4f5c\u5730|\u529e\u516c\u5730\u70b9|\u5730\u5740/u, 60);
+  fields.location = { value: locationValue || WORDS.missing, state: locationValue ? "found" : "missing" };
 
-  const locationFound = has(text, /(工作地点|工作地|办公地点|地址|坐标|北京|上海|广州|深圳|杭州|成都|武汉|南京|苏州|西安|重庆|远程|在家办公)/);
-  fields.location = { value: locationFound ? "已出现地点线索" : "未识别到", state: locationFound ? "found" : "missing" };
+  const dutyPattern = /\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u5185\u5bb9|\u4e3b\u8981\u8d1f\u8d23|\u804c\u8d23\u63cf\u8ff0|\u65e5\u5e38\u5de5\u4f5c|\u8d1f\u8d23/u;
+  const dutyValue = snippet(text, dutyPattern);
+  const dutyFound = Boolean(dutyValue);
+  const dutyVague = text.length < 100 || has(text, /\u5176\u4ed6\u4e34\u65f6\u5b89\u6392|\u5b8c\u6210\u9886\u5bfc\u4ea4\u529e|\u670d\u4ece\u5b89\u6392|\u5de5\u4f5c\u5185\u5bb9\u4e0d\u9650|\u534f\u52a9\u5176\u4ed6\u5de5\u4f5c/u);
+  fields.duties = { value: dutyValue || WORDS.missing, state: dutyFound ? (dutyVague ? "unclear" : "found") : "missing" };
 
-  const dutyFound = has(text, /(岗位职责|工作内容|主要负责|职责描述|日常工作|负责)/);
-  const dutyVague = text.length < 100 || has(text, /(其他临时安排|完成领导交办|服从安排|工作内容不限|协助其他工作)/);
-  fields.duties = { value: dutyFound ? (dutyVague ? "有描述但可能偏模糊" : "已出现职责描述") : "未识别到", state: dutyFound ? (dutyVague ? "unclear" : "found") : "missing" };
+  const requirementsValue = snippet(text, /\u4efb\u804c\u8981\u6c42|\u4efb\u804c\u8d44\u683c|\u5c97\u4f4d\u8981\u6c42|\u5b66\u5386|\u7ecf\u9a8c\u8981\u6c42|\u6280\u80fd\u8981\u6c42|\u672c\u79d1|\u5927\u4e13|\u5e74\u4ee5\u4e0a\u7ecf\u9a8c/u);
+  fields.requirements = { value: requirementsValue || WORDS.missing, state: requirementsValue ? "found" : "missing" };
 
-  const requirementsFound = has(text, /(任职要求|任职资格|岗位要求|学历|经验要求|技能要求|本科|大专|年以上经验)/);
-  fields.requirements = { value: requirementsFound ? "已出现要求线索" : "未识别到", state: requirementsFound ? "found" : "missing" };
+  const hoursValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u52a0\u73ed|996|\u671d\u4e5d\u665a\u516d|\u5f39\u6027\u5de5\u4f5c|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4/u);
+  fields.hours = { value: hoursValue || WORDS.missing, state: hoursValue ? "found" : "missing" };
 
-  const hoursFound = has(text, /(工作时间|上班时间|双休|单休|大小周|加班|996|朝九晚六|弹性工作)/);
-  fields.hours = { value: hoursFound ? "已出现工作时间线索" : "未识别到", state: hoursFound ? "found" : "missing" };
+  const benefitsValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1|\u5e26\u85aa|\u798f\u5229|\u8865\u8d34|\u5e74\u7ec8\u5956|\u9910\u8865|\u623f\u8865/u);
+  fields.benefits = { value: benefitsValue || WORDS.missing, state: benefitsValue ? "found" : "missing" };
 
-  const benefitsFound = has(text, /(五险一金|五险|社保|公积金|带薪|福利|补贴|年终奖|餐补|房补)/);
-  fields.benefits = { value: benefitsFound ? "已出现福利线索" : "未识别到", state: benefitsFound ? "found" : "missing" };
+  const employmentValue = firstMatch(text, /\u5168\u804c|\u517c\u804c|\u5b9e\u4e60|\u52b3\u52a1|\u52b3\u52a8\u5408\u540c|\u6b63\u5f0f|\u793e\u62db|\u6821\u62db|\u5916\u5305/u);
+  fields.employment = { value: employmentValue || WORDS.missing, state: employmentValue ? "found" : "missing" };
 
-  const employmentFound = has(text, /(全职|兼职|实习|劳务|劳动合同|正式|社招|校招|外包)/);
-  fields.employment = { value: employmentFound ? "已出现用工类型线索" : "未识别到", state: employmentFound ? "found" : "missing" };
+  const processValue = firstMatch(text, /\u9762\u8bd5|\u7b14\u8bd5|\u62db\u8058\u6d41\u7a0b|\u51e0\u8f6e|\u5165\u804c\u6d41\u7a0b|\u8bd5\u7528\u671f/u);
+  fields.process = { value: processValue || WORDS.missing, state: processValue ? "found" : "missing" };
 
-  const processFound = has(text, /(面试|笔试|招聘流程|几轮|入职流程|试用期)/);
-  fields.process = { value: processFound ? "已出现流程线索" : "未识别到", state: processFound ? "found" : "missing" };
-
-  if (!salaryFound) findings.push({ category: "薪资透明度", item: "缺少明确的薪资范围", level: "high", evidence: "正文中没有识别到月薪、年薪或薪资区间。", suggestion: "确认月薪/年薪范围、发薪结构和试用期薪资。" });
-  else if (salaryUnclear) findings.push({ category: "薪资透明度", item: "薪资只有面议或笼统表述", level: "medium", evidence: "出现“面议、高薪、待遇优厚”等词，但没有数字区间。", suggestion: "在沟通前要求对方给出底薪、绩效、提成和试用期具体范围。" });
-  if (!dutyFound) findings.push({ category: "工作内容", item: "缺少岗位职责", level: "high", evidence: "没有识别到岗位职责或工作内容段落。", suggestion: "要求补充日常任务、交付目标、汇报对象和不承担的工作边界。" });
-  else if (dutyVague) findings.push({ category: "工作内容", item: "工作内容可能模糊", level: "medium", evidence: "职责较短，或出现“其他安排、服从安排”等开放式表述。", suggestion: "把高频任务、工作占比、加班场景和跨岗职责问清楚。" });
-  if (!locationFound) findings.push({ category: "工作地点", item: "工作地点不明确", level: "medium", evidence: "没有识别到城市、办公地点或远程信息。", suggestion: "确认办公城市、具体区域、是否需要出差以及是否支持远程。" });
-  if (!requirementsFound) findings.push({ category: "任职要求", item: "缺少任职要求", level: "low", evidence: "没有识别到学历、经验或技能要求。", suggestion: "确认硬性门槛、优先技能和不符合条件时的筛选规则。" });
-  if (!hoursFound) findings.push({ category: "工作制度", item: "工作时间和加班制度缺失", level: "medium", evidence: "没有识别到双休、工作时段、加班或调休信息。", suggestion: "确认工作日、上下班时间、加班频率、加班费或调休规则。" });
-  if (!benefitsFound) findings.push({ category: "福利待遇", item: "福利待遇不完整", level: "low", evidence: "没有识别到社保、公积金或其他福利信息。", suggestion: "确认社保公积金缴纳基数、试用期缴纳情况和补贴奖金。" });
-  if (!employmentFound) findings.push({ category: "用工关系", item: "用工类型不清晰", level: "low", evidence: "没有识别到全职、实习、外包或合同类型。", suggestion: "确认劳动合同主体、用工类型、试用期和转正条件。" });
-  if (!processFound) findings.push({ category: "招聘流程", item: "招聘流程不透明", level: "low", evidence: "没有识别到面试轮次、笔试或试用期信息。", suggestion: "提前确认面试轮次、决策人、反馈时间和试用期考核。" });
-  if (has(text, /(无责底薪|纯提成|高提成)/) && !has(text, /(底薪\s*\d|\d+\s*[kK万千元])/)) findings.push({ category: "薪资透明度", item: "可能存在收入结构风险", level: "high", evidence: "出现无责底薪、纯提成或高提成，但未给出可核验的金额。", suggestion: "要求书面确认固定薪资、提成口径、发放条件和历史达成率。" });
-  if (has(text, /(轻松月入|日入|无需经验.*高薪|高薪诚聘)/)) findings.push({ category: "表达风险", item: "存在营销化或夸大收入表述", level: "medium", evidence: "出现高收入承诺，但缺少岗位条件和计算方式。", suggestion: "不要只按宣传数字判断，要求对方说明收入样本、考核条件和淘汰规则。" });
+  if (!salaryFound) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u7f3a\u5c11\u660e\u786e\u7684\u85aa\u8d44\u8303\u56f4", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u6708\u85aa\u3001\u5e74\u85aa\u6216\u85aa\u8d44\u533a\u95f4\u3002", suggestion: "\u786e\u8ba4\u6708\u85aa/\u5e74\u85aa\u8303\u56f4\u3001\u56fa\u5b9a\u85aa\u8d44\u3001\u7ee9\u6548\u63d0\u6210\u548c\u8bd5\u7528\u671f\u85aa\u8d44\u3002" });
+  else if (salaryUnclear) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u85aa\u8d44\u53ea\u6709\u9762\u8bae\u6216\u7b3c\u7edf\u8868\u8ff0", level: "medium", evidence: `\u8bc6\u522b\u5230\uff1a${fields.salary.value}\uff0c\u4f46\u6ca1\u6709\u5177\u4f53\u6570\u5b57\u3002`, suggestion: "\u8981\u6c42\u5bf9\u65b9\u7ed9\u51fa\u5e95\u85aa\u3001\u7ee9\u6548\u3001\u63d0\u6210\u548c\u8bd5\u7528\u671f\u7684\u5177\u4f53\u8303\u56f4\u3002" });
+  if (!dutyFound) findings.push({ category: "\u5de5\u4f5c\u5185\u5bb9", item: "\u7f3a\u5c11\u5c97\u4f4d\u804c\u8d23", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5c97\u4f4d\u804c\u8d23\u6216\u5de5\u4f5c\u5185\u5bb9\u6bb5\u843d\u3002", suggestion: "\u8981\u6c42\u8865\u5145\u65e5\u5e38\u4efb\u52a1\u3001\u4ea4\u4ed8\u76ee\u6807\u3001\u6c47\u62a5\u5bf9\u8c61\u548c\u5de5\u4f5c\u8fb9\u754c\u3002" });
+  else if (dutyVague) findings.push({ category: "\u5de5\u4f5c\u5185\u5bb9", item: "\u5de5\u4f5c\u5185\u5bb9\u53ef\u80fd\u6a21\u7cca", level: "medium", evidence: `\u8bc6\u522b\u5230\uff1a${fields.duties.value}`, suggestion: "\u628a\u9ad8\u9891\u4efb\u52a1\u3001\u5de5\u4f5c\u5360\u6bd4\u3001\u52a0\u73ed\u573a\u666f\u548c\u8de8\u5c97\u804c\u8d23\u95ee\u6e05\u695a\u3002" });
+  if (!locationValue) findings.push({ category: "\u5de5\u4f5c\u5730\u70b9", item: "\u5de5\u4f5c\u5730\u70b9\u4e0d\u660e\u786e", level: "medium", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u57ce\u5e02\u3001\u529e\u516c\u5730\u70b9\u6216\u8fdc\u7a0b\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u529e\u516c\u57ce\u5e02\u3001\u5177\u4f53\u533a\u57df\u3001\u662f\u5426\u51fa\u5dee\u4ee5\u53ca\u662f\u5426\u652f\u6301\u8fdc\u7a0b\u3002" });
+  if (!requirementsValue) findings.push({ category: "\u4efb\u804c\u8981\u6c42", item: "\u7f3a\u5c11\u4efb\u804c\u8981\u6c42", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5b66\u5386\u3001\u7ecf\u9a8c\u6216\u6280\u80fd\u8981\u6c42\u3002", suggestion: "\u786e\u8ba4\u786c\u6027\u95e8\u69db\u3001\u4f18\u5148\u6280\u80fd\u548c\u7b5b\u9009\u89c4\u5219\u3002" });
+  if (!hoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5de5\u4f5c\u65f6\u95f4\u548c\u52a0\u73ed\u5236\u5ea6\u7f3a\u5931", level: "medium", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u53cc\u4f11\u3001\u5de5\u4f5c\u65f6\u6bb5\u3001\u52a0\u73ed\u6216\u8c03\u4f11\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u5de5\u4f5c\u65e5\u3001\u4e0a\u4e0b\u73ed\u65f6\u95f4\u3001\u52a0\u73ed\u9891\u7387\u3001\u52a0\u73ed\u8d39\u6216\u8c03\u4f11\u89c4\u5219\u3002" });
+  if (!benefitsValue) findings.push({ category: "\u798f\u5229\u5f85\u9047", item: "\u798f\u5229\u5f85\u9047\u4e0d\u5b8c\u6574", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u793e\u4fdd\u3001\u516c\u79ef\u91d1\u6216\u5176\u4ed6\u798f\u5229\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u793e\u4fdd\u516c\u79ef\u91d1\u7f34\u7eb3\u57fa\u6570\u3001\u8bd5\u7528\u671f\u7f34\u7eb3\u60c5\u51b5\u548c\u8865\u8d34\u5956\u91d1\u3002" });
+  if (!employmentValue) findings.push({ category: "\u7528\u5de5\u5173\u7cfb", item: "\u7528\u5de5\u7c7b\u578b\u4e0d\u6e05\u6670", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5168\u804c\u3001\u5b9e\u4e60\u3001\u5916\u5305\u6216\u5408\u540c\u7c7b\u578b\u3002", suggestion: "\u786e\u8ba4\u52b3\u52a8\u5408\u540c\u4e3b\u4f53\u3001\u7528\u5de5\u7c7b\u578b\u3001\u8bd5\u7528\u671f\u548c\u8f6c\u6b63\u6761\u4ef6\u3002" });
+  if (!processValue) findings.push({ category: "\u62db\u8058\u6d41\u7a0b", item: "\u62db\u8058\u6d41\u7a0b\u4e0d\u900f\u660e", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u9762\u8bd5\u8f6e\u6b21\u3001\u7b14\u8bd5\u6216\u8bd5\u7528\u671f\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u9762\u8bd5\u8f6e\u6b21\u3001\u51b3\u7b56\u4eba\u3001\u53cd\u9988\u65f6\u95f4\u548c\u8bd5\u7528\u671f\u8003\u6838\u3002" });
+  if (has(text, /\u65e0\u8d23\u5e95\u85aa|\u7eaf\u63d0\u6210|\u9ad8\u63d0\u6210/u) && !salaryNumber) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u53ef\u80fd\u5b58\u5728\u6536\u5165\u7ed3\u6784\u98ce\u9669", level: "high", evidence: "\u51fa\u73b0\u65e0\u8d23\u5e95\u85aa\u3001\u7eaf\u63d0\u6210\u6216\u9ad8\u63d0\u6210\uff0c\u4f46\u672a\u7ed9\u51fa\u91d1\u989d\u3002", suggestion: "\u8981\u6c42\u4e66\u9762\u786e\u8ba4\u56fa\u5b9a\u85aa\u8d44\u3001\u63d0\u6210\u53e3\u5f84\u3001\u53d1\u653e\u6761\u4ef6\u548c\u5386\u53f2\u8fbe\u6210\u7387\u3002" });
 
   const strengths: string[] = [];
-  if (salaryFound && !salaryUnclear) strengths.push("已提供数字化薪资线索");
-  if (dutyFound && !dutyVague) strengths.push("岗位职责有一定具体度");
-  if (locationFound) strengths.push("工作地点有线索");
-  if (benefitsFound) strengths.push("福利待遇有部分说明");
+  if (salaryNumber) strengths.push(`\u85aa\u8d44\uff1a${salaryNumber}`);
+  if (dutyFound && !dutyVague) strengths.push("\u5c97\u4f4d\u804c\u8d23\u6709\u5177\u4f53\u63cf\u8ff0");
+  if (locationValue) strengths.push(`\u5730\u70b9\uff1a${locationValue}`);
+  if (benefitsValue) strengths.push(`\u798f\u5229\uff1a${benefitsValue}`);
 
-  const score = Math.max(0, Math.min(100, 100 - findings.reduce((total, item) => total + (item.level === "high" ? 20 : item.level === "medium" ? 12 : 6), 0)));
-  const company = companyName ? `“${companyName}”` : "这条招聘信息";
-  const summary = score >= 80
-    ? `${company}信息相对完整，但仍建议在沟通时核实关键条件。`
-    : score >= 55
-    ? `${company}存在若干需要补充确认的条件，建议不要只凭截图做决定。`
-    : `${company}关键信息缺口较多，建议先补齐薪资、职责和用工条件，再决定是否推进。`;
-
-  return { riskScore: score, summary, fields, findings, strengths };
+  const riskScore = Math.max(0, Math.min(100, 100 - findings.reduce((total, item) => total + (item.level === "high" ? 20 : item.level === "medium" ? 12 : 6), 0)));
+  const company = companyName ? `“${companyName}”` : "\u8fd9\u6761\u62db\u8058\u4fe1\u606f";
+  const summary = riskScore >= 80 ? `${company}\u4fe1\u606f\u76f8\u5bf9\u5b8c\u6574\uff0c\u4f46\u4ecd\u5efa\u8bae\u5728\u6c9f\u901a\u65f6\u6838\u5b9e\u5173\u952e\u6761\u4ef6\u3002` : riskScore >= 55 ? `${company}\u5b58\u5728\u82e5\u5e72\u9700\u8981\u8865\u5145\u786e\u8ba4\u7684\u6761\u4ef6\uff0c\u5efa\u8bae\u4e0d\u8981\u53ea\u51ed\u622a\u56fe\u505a\u51b3\u5b9a\u3002` : `${company}\u5173\u952e\u5b57\u6bb5\u7f3a\u53e3\u8f83\u591a\uff0c\u5efa\u8bae\u5148\u8865\u9f50\u85aa\u8d44\u3001\u804c\u8d23\u548c\u7528\u5de5\u6761\u4ef6\uff0c\u518d\u51b3\u5b9a\u662f\u5426\u63a8\u8fdb\u3002`;
+  return { riskScore, summary, fields, findings, strengths };
 }
 
-function serialize(item: { resultJson: string; [key: string]: unknown }) {
-  return { ...item, result: JSON.parse(item.resultJson) };
+function serialize<T extends { resultJson: string; rawText: string; companyName: string | null }>(item: T) {
+  const result = analyzeText(item.rawText, item.companyName);
+  return { ...item, riskScore: result.riskScore, result };
 }
 
 export async function GET(request: NextRequest) {
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "\u672a\u767b\u5f55" }, { status: 401 });
   try {
     const items = await prisma.jobAnalysis.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 100 });
     return NextResponse.json({ items: items.map(serialize) });
   } catch (error) {
     console.error("Load analysis archives error:", error);
-    return NextResponse.json({ error: "获取分析存档失败" }, { status: 500 });
+    return NextResponse.json({ error: "\u83b7\u53d6\u5206\u6790\u5b58\u6863\u5931\u8d25" }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: "请先登录后保存分析" }, { status: 401 });
-
+  if (!userId) return NextResponse.json({ error: "\u8bf7\u5148\u767b\u5f55\u540e\u4fdd\u5b58\u5206\u6790" }, { status: 401 });
   try {
     const body = await request.json();
     const rawText = typeof body.rawText === "string" ? body.rawText.trim() : "";
-    if (rawText.length < 12) return NextResponse.json({ error: "请补充至少 12 个字的招聘文字" }, { status: 400 });
-    const result = analyzeText(rawText, typeof body.companyName === "string" ? body.companyName.trim() : null);
-    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "未命名招聘分析";
-    const item = await prisma.jobAnalysis.create({
-      data: {
-        userId,
-        title,
-        companyName: typeof body.companyName === "string" ? body.companyName.trim() || null : null,
-        source: typeof body.source === "string" ? body.source.trim() || null : null,
-        imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null,
-        rawText,
-        resultJson: JSON.stringify(result),
-        riskScore: result.riskScore,
-      },
-    });
+    if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
+    const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
+    const result = analyzeText(rawText, companyName);
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
+    const item = await prisma.jobAnalysis.create({ data: { userId, title, companyName, source: typeof body.source === "string" ? body.source.trim() || null : null, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null, rawText, resultJson: JSON.stringify(result), riskScore: result.riskScore } });
     return NextResponse.json({ success: true, item: serialize(item), result });
   } catch (error) {
     console.error("Create analysis archive error:", error);
-    return NextResponse.json({ error: "分析保存失败" }, { status: 500 });
+    return NextResponse.json({ error: "\u5206\u6790\u4fdd\u5b58\u5931\u8d25" }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
   const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  if (!userId) return NextResponse.json({ error: "\u672a\u767b\u5f55" }, { status: 401 });
   const id = Number(new URL(request.url).searchParams.get("id"));
-  if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "存档参数无效" }, { status: 400 });
+  if (!Number.isInteger(id) || id < 1) return NextResponse.json({ error: "\u5b58\u6863\u53c2\u6570\u65e0\u6548" }, { status: 400 });
   await prisma.jobAnalysis.deleteMany({ where: { id, userId } });
   return NextResponse.json({ success: true });
 }
