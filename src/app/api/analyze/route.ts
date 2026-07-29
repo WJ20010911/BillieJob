@@ -130,6 +130,36 @@ function cityReference(city: string, salary: string): CityReference | undefined 
   return { city, monthlyIncome: benchmark.monthlyIncome, salaryFloor, ratio, score, level, referenceYear: benchmark.referenceYear };
 }
 
+interface CompensationStage {
+  fixed: number;
+  detail: string;
+}
+
+function compensationStage(segment: string): CompensationStage | undefined {
+  if (!segment) return undefined;
+  const base = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)/u) || 0);
+  const performance = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)/u) || 0);
+  const mealPerDay = Number(capture(segment, /\u9910\u8865[^\d]{0,8}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u5929|\u65e5)/u) || 0);
+  const monthlyNight = Number(capture(segment, /(?:\u5c97\u8865|\u591c\u73ed\u8865\u8d34)[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*\u6708/u) || 0);
+  const overnightNight = Number(capture(segment, /\u591c\u73ed\u8865\u8d34[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u665a|\u591c)/u) || 0);
+  const fixed = base + performance + monthlyNight;
+  if (!fixed && !mealPerDay && !overnightNight) return undefined;
+  const items = [base ? `\u57fa\u672c\u5de5\u8d44 ${base} \u5143` : "", performance ? `\u7ee9\u6548 ${performance} \u5143` : "", monthlyNight ? `\u591c\u73ed\u5c97\u8865 ${monthlyNight} \u5143/\u6708` : ""].filter(Boolean);
+  const variable = [mealPerDay ? `\u9910\u8865 ${mealPerDay} \u5143/\u5de5\u4f5c\u65e5` : "", overnightNight ? `\u901a\u5bb5\u591c\u73ed\u8865\u8d34 ${overnightNight} \u5143/\u665a` : ""].filter(Boolean);
+  return { fixed, detail: `\u56fa\u5b9a ${fixed} \u5143/\u6708\uff08${items.join(" + ")}\uff09${variable.length ? `\uff1b\u53e6\u6709 ${variable.join(" + ")}` : ""}` };
+}
+
+function monthlyIndividualIncomeTax(amount: number) {
+  const taxable = Math.max(0, amount - 5000);
+  if (taxable <= 3000) return taxable * 0.03;
+  if (taxable <= 12000) return taxable * 0.1 - 210;
+  if (taxable <= 25000) return taxable * 0.2 - 1410;
+  if (taxable <= 35000) return taxable * 0.25 - 2660;
+  if (taxable <= 55000) return taxable * 0.3 - 4410;
+  if (taxable <= 80000) return taxable * 0.35 - 7160;
+  return taxable * 0.45 - 15160;
+}
+
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
   const text = rawText.replace(/\s+/g, " ").trim();
   const findings: Finding[] = [];
@@ -148,7 +178,6 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   // Do not treat a bare \"工作地点\" label as a location: OCR text often has no line breaks.
   const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u);
   fields.location = { value: locationValue || WORDS.missing, state: locationValue ? "found" : "missing" };
-  const cityLiving = cityReference(locationValue, salaryNumber);
 
   const dutyPattern = /\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u5185\u5bb9|\u4e3b\u8981\u8d1f\u8d23|\u804c\u8d23\u63cf\u8ff0|\u65e5\u5e38\u5de5\u4f5c|\u8d1f\u8d23/u;
   const nextFieldPattern = /\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u53cc\u4f11|\u5355\u4f11|\u5012\u73ed|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669/u;
@@ -210,10 +239,23 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const commissionValue = commissionAmount ? "\u63d0\u6210 " + commissionAmount : "";
   const performanceValue = performanceAmount ? "\u7ee9\u6548 " + amountWithUnit(performanceAmount) : "";
   const salaryComponents = [baseValue, performanceValue, commissionValue].filter(Boolean).join(" + ");
-  fields.salaryStructure = { value: salaryComponents || WORDS.missing, state: salaryComponents ? "found" : "missing" };
+  const probationStage = compensationStage(labeledValue(text, /\u8bd5\u7528\u671f[\s:：]*/u, /\u8f6c\u6b63|\u8f6c\u6b63\u540e|\u6b63\u5f0f\u671f/u, 280));
+  const regularStage = compensationStage(labeledValue(text, /(?:\u8f6c\u6b63\u540e?|\u6b63\u5f0f\u671f)[\s:：]*/u, /\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23|\u4efb\u804c\u8981\u6c42/u, 280));
+  const stageSummary = [probationStage ? `\u8bd5\u7528\u671f\uff1a${probationStage.detail}` : "", regularStage ? `\u8f6c\u6b63\uff1a${regularStage.detail}` : ""].filter(Boolean).join("\uff1b");
+  fields.salaryStructure = { value: stageSummary || salaryComponents || WORDS.missing, state: stageSummary || salaryComponents ? "found" : "missing" };
   fields.salaryBase = { value: baseValue || WORDS.missing, state: baseValue ? (money.test(baseValue) ? "found" : "unclear") : "missing" };
   fields.commission = { value: commissionValue || WORDS.missing, state: commissionValue ? (money.test(commissionValue) || has(commissionValue, /\d+\s*%/u) ? "found" : "unclear") : "missing" };
   fields.performance = { value: performanceValue || WORDS.missing, state: performanceValue ? (money.test(performanceValue) ? "found" : "unclear") : "missing" };
+  fields.probationCompensation = { value: probationStage?.detail || WORDS.missing, state: probationStage ? "found" : "missing" };
+  fields.regularCompensation = { value: regularStage?.detail || WORDS.missing, state: regularStage ? "found" : "missing" };
+  const afterTaxStages = [probationStage ? `\u8bd5\u7528\u671f\u4e2a\u7a0e\u540e\u56fa\u5b9a\u7ea6 ${Math.round(probationStage.fixed - monthlyIndividualIncomeTax(probationStage.fixed))} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u4e2a\u7a0e\u540e\u56fa\u5b9a\u7ea6 ${Math.round(regularStage.fixed - monthlyIndividualIncomeTax(regularStage.fixed))} \u5143/\u6708` : ""].filter(Boolean);
+  fields.afterTaxIncome = { value: afterTaxStages.length ? `${afterTaxStages.join("\uff1b")}\uff08\u672a\u6263\u793e\u4fdd/\u516c\u79ef\u91d1\uff0c\u9910\u8865\u4e0e\u6309\u665a\u8865\u8d34\u53e6\u8ba1\uff09` : WORDS.missing, state: afterTaxStages.length ? "unclear" : "missing" };
+  const stagedSalaryRange = [probationStage ? `\u8bd5\u7528\u671f\u56fa\u5b9a ${probationStage.fixed} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u540e\u56fa\u5b9a ${regularStage.fixed} \u5143/\u6708` : ""].filter(Boolean).join("\uff1b");
+  if (stagedSalaryRange) {
+    fields.salary = { value: stagedSalaryRange, state: "unclear" };
+    fields.salaryRange = { value: stagedSalaryRange, state: "unclear" };
+  }
+  const cityLiving = cityReference(locationValue, String(regularStage?.fixed || probationStage?.fixed || salaryNumber));
   const taskRequirementValue = firstMatch(text, /\u6ca1\u6709\u4efb\u52a1\u8981\u6c42|\u65e0\u4efb\u52a1\u8981\u6c42|\u4e0d\u8bbe\u4efb\u52a1|\u65e0\u4e1a\u7ee9\u8981\u6c42|\u4e0d\u8003\u6838|\u4efb\u52a1\u6307\u6807[^\u3002\uff1b;.!?\uff01\uff1f]{0,40}/u);
   fields.taskRequirement = { value: taskRequirementValue || WORDS.missing, state: taskRequirementValue ? "found" : "missing" };
 
