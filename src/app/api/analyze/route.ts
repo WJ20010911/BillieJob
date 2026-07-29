@@ -137,8 +137,8 @@ interface CompensationStage {
 
 function compensationStage(segment: string): CompensationStage | undefined {
   if (!segment) return undefined;
-  const base = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)/u) || 0);
-  const performance = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)/u) || 0);
+  const base = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)/u) || capture(segment, /(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)[\s:：+]*([0-9]+(?:\.\d+)?)/u) || 0);
+  const performance = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)/u) || capture(segment, /(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)[\s:：+]*([0-9]+(?:\.\d+)?)/u) || 0);
   const mealPerDay = Number(capture(segment, /\u9910\u8865[^\d]{0,8}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u5929|\u65e5)/u) || 0);
   const monthlyNight = Number(capture(segment, /(?:\u5c97\u8865|\u591c\u73ed\u8865\u8d34)[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*\u6708/u) || 0);
   const overnightNight = Number(capture(segment, /\u591c\u73ed\u8865\u8d34[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u665a|\u591c)/u) || 0);
