@@ -92,6 +92,16 @@ function extractJobMeta(ocrText: string) {
   return { title, companyName };
 }
 
+function cleanOcrText(ocrText: string) {
+  const interfaceOnly = /^(?:[<>‹›《》←→]|不感兴趣|继续沟通|立即沟通|发消息|投递简历|收藏|分享|举报|查看全部|BOSS直聘|Boss直聘)$/iu;
+  return ocrText.split(/\r?\n/u).map((line) => line.replace(/\s+/gu, " ").trim()).filter((line) => {
+    if (!line || interfaceOnly.test(line)) return false;
+    // A line such as "20:57 @M" is a phone status bar, not a working-time field.
+    if (/^\d{1,2}:\d{2}(?:\s|$).*(?:@|[▮▯]|%|4G|5G|Wi-?Fi|电量)/iu.test(line)) return false;
+    return true;
+  }).join("\n");
+}
+
 export default function AnalyzePage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -180,10 +190,12 @@ export default function AnalyzePage() {
         throw new Error(response.ok ? "OCR 服务返回了无法识别的内容" : `OCR 请求失败（HTTP ${response.status}）`);
       }
       if (!response.ok) throw new Error(data.error || "OCR request failed");
-      const text = String(data.text || "").trim();
-      if (!text) throw new Error("没有识别到文字");
+      const recognizedText = String(data.text || "").trim();
+      if (!recognizedText) throw new Error("没有识别到文字");
+      const text = cleanOcrText(recognizedText);
+      if (!text) throw new Error("识别结果只包含界面元素，请换一张更完整的截图");
       setRawText(text);
-      const meta = extractJobMeta(text);
+      const meta = extractJobMeta(recognizedText);
       if (meta.title) setTitle((previous) => previous.trim() || meta.title);
       if (meta.companyName) setCompanyName((previous) => previous.trim() || meta.companyName);
       setMessage(meta.title || meta.companyName ? "截图文字已识别，已自动填写职位和公司，请校对后开始分析。" : "截图文字已识别，请校对后开始分析。");
