@@ -28,6 +28,6 @@ jobs:
             git pull --ff-only origin main
             npm ci
             npx prisma generate
-            npx prisma migrate deploy
+            npx prisma db push
             NODE_OPTIONS=--max-old-space-size=1536 npm run build
             PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 restart billiejob --update-env
