@@ -82,7 +82,8 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const fields: AnalysisResult["fields"] = {};
   const money = /\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)(?:\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\/\u6708|\/\u5e74|\/\u5929|\/\u5c0f\u65f6)?/u;
   const labeledSalary = capture(text, /(?:\u85aa\u8d44\u5f85\u9047|\u85aa\u8d44\u8303\u56f4|\u85aa\u916c\u8303\u56f4|\u85aa\u916c|\u6708\u85aa|\u5de5\u8d44)[\s:：]*([0-9]+(?:\.\d+)?(?:\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\s*[-~\u81f3\u5230]\s*[0-9]+(?:\.\d+)?(?:\s*(?:[kK]|\u4e07|\u5343|\u5143))?)?)/u);
-  const salaryNumber = labeledSalary || firstMatch(text, money);
+  const compactSalaryRange = firstMatch(text, /\d+(?:\.\d+)?\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*[kK]\+?/u);
+  const salaryNumber = labeledSalary || compactSalaryRange || firstMatch(text, money);
   const salaryFound = Boolean(salaryNumber) || has(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u);
   const salaryUnclear = has(text, /\u9762\u8bae|\u85aa\u8d44\u53ef\u8c08|\u5f85\u9047\u4f18\u539a|\u9ad8\u85aa|\u4e30\u539a/u) && !salaryNumber;
   const salaryHasPeriod = /\/?(?:\u6708|\u5e74|\u5929|\u5c0f\u65f6)|\u6708\u85aa|\u5e74\u85aa/u.test(salaryNumber);
@@ -96,17 +97,18 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
 
   const dutyPattern = /\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u5185\u5bb9|\u4e3b\u8981\u8d1f\u8d23|\u804c\u8d23\u63cf\u8ff0|\u65e5\u5e38\u5de5\u4f5c|\u8d1f\u8d23/u;
   const nextFieldPattern = /\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u53cc\u4f11|\u5355\u4f11|\u5012\u73ed|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669/u;
-  const dutyValue = (labeledValue(text, dutyPattern, nextFieldPattern) || snippet(text, dutyPattern)).replace(/^(?:\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23)\s*/u, "");
+  const dutyValue = (labeledValue(text, dutyPattern, nextFieldPattern) || snippet(text, dutyPattern)).replace(/^(?:\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23)\s*/u, "").replace(/\s*\d+\s*[-、.]?\s*$/u, "");
   const dutyFound = Boolean(dutyValue);
   const dutyVague = text.length < 100 || has(text, /\u5176\u4ed6\u4e34\u65f6\u5b89\u6392|\u5b8c\u6210\u9886\u5bfc\u4ea4\u529e|\u670d\u4ece\u5b89\u6392|\u5de5\u4f5c\u5185\u5bb9\u4e0d\u9650|\u534f\u52a9\u5176\u4ed6\u5de5\u4f5c/u);
   fields.duties = { value: dutyValue || WORDS.missing, state: dutyFound ? (dutyVague ? "unclear" : "found") : "missing" };
 
-  const requirementPattern = /\u4efb\u804c\u8981\u6c42|\u4efb\u804c\u8d44\u683c|\u5c97\u4f4d\u8981\u6c42|\u5b66\u5386|\u7ecf\u9a8c\u8981\u6c42|\u6280\u80fd\u8981\u6c42/u;
-  const requirementsValue = (labeledValue(text, requirementPattern, /\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669|\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u5012\u73ed|\u4efb\u52a1\u8981\u6c42/u) || firstMatch(text, requirementPattern)).replace(/^(?:\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42)\s*/u, "");
+  const requirementPattern = /\u4efb\u804c\u8981\u6c42|\u4efb\u804c\u8d44\u683c|\u5c97\u4f4d\u8981\u6c42|\u804c\u4f4d\u5173\u952e\u8bcd|\u5b66\u5386|\u7ecf\u9a8c\u8981\u6c42|\u6280\u80fd\u8981\u6c42/u;
+  const requirementsValue = (labeledValue(text, requirementPattern, /\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669|\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u5012\u73ed|\u4efb\u52a1\u8981\u6c42/u) || firstMatch(text, requirementPattern)).replace(/^(?:\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u804c\u4f4d\u5173\u952e\u8bcd)\s*/u, "");
   fields.requirements = { value: requirementsValue || WORDS.missing, state: requirementsValue ? "found" : "missing" };
 
-  const workTimePattern = /\d{1,2}(?::\d{2})?\s*[-~\u81f3\u5230]\s*\d{1,2}(?::\d{2})?|\u671d\u4e5d\u665a\u516d|\u65e9\u4e5d\u665a\u516d|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u73ed\u6b21/u;
-  const workTimeValue = firstMatch(text, /\d{1,2}(?::\d{2})?\s*[-~\u81f3\u5230]\s*\d{1,2}(?::\d{2})?/u) || firstMatch(text, workTimePattern);
+  const clockRange = /\d{1,2}:\d{2}\s*[-~\u81f3\u5230]\s*\d{1,2}:\d{2}/u;
+  const labeledWorkTime = capture(text, /(?:\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u73ed\u6b21)[\s:：]*([0-2]?\d(?::[0-5]\d)?\s*[-~\u81f3\u5230]\s*[0-2]?\d(?::[0-5]\d)?)/u);
+  const workTimeValue = labeledWorkTime || firstMatch(text, clockRange) || firstMatch(text, /\u671d\u4e5d\u665a\u516d|\u65e9\u4e5d\u665a\u516d/u);
   fields.workTime = { value: workTimeValue || WORDS.missing, state: workTimeValue ? "found" : "missing" };
   fields.hours = { value: workTimeValue || WORDS.missing, state: workTimeValue ? "found" : "missing" };
 
@@ -116,19 +118,20 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const inferredDailyHours = workTimeMatch ? (() => {
     const start = timeToHours(workTimeMatch[1]);
     let end = timeToHours(workTimeMatch[2]);
-    if (end <= start) end += 12;
+    if (end <= start) end += workTimeValue.includes(":") ? 24 : 12;
     const hours = end - start;
     return hours > 0 && hours <= 16 ? `\u7ea6 ${hours} \u5c0f\u65f6/\u5929\uff08\u6309 ${workTimeValue} \u63a8\u7b97\uff0c\u4f11\u606f\u65f6\u95f4\u672a\u8bf4\u660e\uff09` : "";
   })() : "";
   fields.dailyHours = { value: dailyHoursValue || inferredDailyHours || WORDS.missing, state: dailyHoursValue ? "found" : inferredDailyHours ? "unclear" : "missing" };
   const weeklyHoursDirect = firstMatch(text, /(?:\u6bcf\u5468|\u5468\u5de5)\s*\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)|\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)\s*\/\s*(?:\u5468|\u5468\u5de5)/iu);
+  const rotationMatch = text.match(/\u4e0a\s*([1-7])\s*(?:\u5929)?\s*\u4f11(?:\u606f)?\s*([1-7])\s*(?:\u5929)?/u);
   const weeklyDaysMatch = text.match(/(?:\u6bcf\u5468\s*)?(\d+)\s*\u5929(?:\u5de5\u4f5c)?/u);
   const weeklyDaysValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u505a\u516d\u4f11\u4e00|\u6bcf\u5468\s*(?:[1-7]|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u4e24])\s*(?:\u5929|\u65e5)/u);
   const dailyHours = dailyHoursMatch ? Number(dailyHoursMatch[1] || dailyHoursMatch[2]) : workTimeMatch ? Number(inferredDailyHours.match(/\d+(?:\.\d+)?/u)?.[0] || 0) : 0;
-  const weeklyDays = weeklyDaysMatch ? Number(weeklyDaysMatch[1]) : weeklyDaysValue === "\u53cc\u4f11" ? 5 : weeklyDaysValue === "\u5355\u4f11" ? 6 : 0;
-  const weeklyHoursValue = weeklyHoursDirect || (dailyHours && weeklyDays ? "\u7ea6 " + dailyHours * weeklyDays + " \u5c0f\u65f6/\u5468\uff08\u6309\u6bcf\u65e5\u65f6\u95f4\u4e0e\u4f11\u606f\u65e5\u63a8\u7b97\uff0c\u4f11\u606f\u65f6\u95f4\u672a\u8bf4\u660e\uff09" : "");
+  const weeklyDays = rotationMatch ? 7 * Number(rotationMatch[1]) / (Number(rotationMatch[1]) + Number(rotationMatch[2])) : weeklyDaysMatch ? Number(weeklyDaysMatch[1]) : weeklyDaysValue === "\u53cc\u4f11" ? 5 : weeklyDaysValue === "\u5355\u4f11" ? 6 : 0;
+  const weeklyHoursValue = weeklyHoursDirect || (dailyHours && weeklyDays ? "\u7ea6 " + Math.round(dailyHours * weeklyDays * 10) / 10 + " \u5c0f\u65f6/\u5468\uff08\u6309\u6bcf\u65e5\u65f6\u95f4\u4e0e\u4f11\u606f\u65e5\u63a8\u7b97\uff0c\u4f11\u606f\u65f6\u95f4\u672a\u8bf4\u660e\uff09" : "");
   fields.weeklyHours = { value: weeklyHoursValue || WORDS.missing, state: weeklyHoursDirect ? "found" : weeklyHoursValue ? "unclear" : "missing" };
-  fields.weeklyWorkDays = { value: weeklyDaysValue || (weeklyDaysMatch ? "\u6bcf\u5468 " + weeklyDaysMatch[1] + " \u5929" : WORDS.missing), state: weeklyDaysValue || weeklyDaysMatch ? "found" : "missing" };
+  fields.weeklyWorkDays = { value: rotationMatch ? `上${rotationMatch[1]}休${rotationMatch[2]}（轮换，约 ${weeklyDays} 天/周）` : weeklyDaysValue || (weeklyDaysMatch ? "\u6bcf\u5468 " + weeklyDaysMatch[1] + " \u5929" : WORDS.missing), state: rotationMatch ? "unclear" : weeklyDaysValue || weeklyDaysMatch ? "found" : "missing" };
   const shiftValue = firstMatch(text, /(?:\u4f1a|\u9700\u8981|\u53ef\u80fd)?\s*(?:\u6d89\u53ca)?(?:\u5012\u73ed|\u8f6e\u73ed|\u6392\u73ed|\u4e24\u73ed\u5012|\u4e09\u73ed\u5012|\u65e9\u665a\u73ed|\u767d\u591c\u73ed|\u591c\u73ed|\u4e0d\u5012\u73ed|\u65e0\u591c\u73ed)/u);
   fields.shiftWork = { value: shiftValue || WORDS.missing, state: shiftValue ? "found" : "missing" };
   const overtimePattern = /\u4e0d\u52a0\u73ed|\u65e0\u52a0\u73ed|\u5e38\u6001\u52a0\u73ed|\u8c03\u4f11|\u52a0\u73ed\u8d39|\u52a0\u73ed\u9891\u7387/u;
@@ -188,7 +191,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   if (!workTimeValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5de5\u4f5c\u65f6\u95f4\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5230\u4e0a\u4e0b\u73ed\u65f6\u95f4\u3001\u73ed\u6b21\u6216\u5de5\u4f5c\u65f6\u6bb5\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5929\u5b9e\u9645\u5de5\u4f5c\u65f6\u6bb5\u3001\u4f11\u606f\u65f6\u95f4\u548c\u662f\u5426\u5b58\u5728\u7279\u6b8a\u73ed\u6b21\u3002" });
   if (!dailyHoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u65e5\u5de5\u4f5c\u5c0f\u65f6\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u6bcf\u5929\u5b9e\u9645\u5de5\u4f5c\u5c0f\u65f6\u3002", suggestion: "\u786e\u8ba4\u6bcf\u65e5\u5de5\u4f5c\u5c0f\u65f6\u3001\u5348\u4f11\u662f\u5426\u8ba1\u5165\u3001\u4ee5\u53ca\u662f\u5426\u5b58\u5728\u9690\u5f62\u5ef6\u65f6\u3002" });
   if (!weeklyHoursValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u5468\u5de5\u65f6\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5230\u6bcf\u5468\u5de5\u65f6\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5468\u5b9e\u9645\u5de5\u4f5c\u5c0f\u65f6\uff0c\u4ee5\u53ca\u4f11\u606f\u65e5\u662f\u5426\u8ba1\u5165\u5de5\u65f6\u3002" });
-  if (!weeklyDaysValue && !weeklyDaysMatch) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u53cc\u4f11\u3001\u5927\u5c0f\u5468\u6216\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5468\u4e0a\u73ed\u51e0\u5929\u3001\u662f\u5426\u5927\u5c0f\u5468\u6216\u6708\u4f11\u3002" });
+  if (!rotationMatch && !weeklyDaysValue && !weeklyDaysMatch) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u53cc\u4f11\u3001\u5927\u5c0f\u5468\u6216\u6bcf\u5468\u5de5\u4f5c\u5929\u6570\u3002", suggestion: "\u786e\u8ba4\u6bcf\u5468\u4e0a\u73ed\u51e0\u5929\u3001\u662f\u5426\u5927\u5c0f\u5468\u6216\u6708\u4f11\u3002" });
   if (!shiftValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u5012\u73ed\u8981\u6c42\u672a\u8bf4\u660e", level: "medium", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u5012\u73ed\u3001\u591c\u73ed\u6216\u65e0\u5012\u73ed\u8bf4\u660e\u3002", suggestion: "\u786e\u8ba4\u662f\u5426\u8f6e\u73ed\u3001\u65e9\u665a\u73ed\u65f6\u6bb5\u3001\u591c\u73ed\u9891\u7387\u548c\u591c\u73ed\u8865\u8d34\u3002" });
   if (!overtimeValue) findings.push({ category: "\u5de5\u4f5c\u5236\u5ea6", item: "\u52a0\u73ed\u653f\u7b56\u672a\u8bf4\u660e", level: "low", evidence: "\u672a\u5728\u6587\u5b57\u4e2d\u8bc6\u522b\u52a0\u73ed\u3001\u8c03\u4f11\u6216\u52a0\u73ed\u8d39\u89c4\u5219\u3002", suggestion: "\u8ffd\u95ee\u52a0\u73ed\u662f\u5426\u5e38\u6001\u3001\u662f\u5426\u8ba1\u85aa\u6216\u8c03\u4f11\u3002" });
   if (!baseValue) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u57fa\u672c\u5de5\u8d44/\u65e0\u8d23\u5e95\u85aa\u672a\u8bf4\u660e", level: "high", evidence: "\u672a\u8bc6\u522b\u5230\u57fa\u672c\u5de5\u8d44\u6216\u65e0\u8d23\u5e95\u85aa\u53ca\u5176\u91d1\u989d\u3002", suggestion: "\u786e\u8ba4\u56fa\u5b9a\u5e95\u85aa\u91d1\u989d\u3001\u662f\u5426\u65e0\u8d23\u5e95\u85aa\u3001\u8bd5\u7528\u671f\u662f\u5426\u4e00\u81f4\u3002" });
