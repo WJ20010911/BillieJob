@@ -250,6 +250,13 @@ function parseJson(text: string): AIAnalysisOutput {
   return JSON.parse(cleaned.slice(start, end + 1)) as AIAnalysisOutput;
 }
 
+function chatCompletionEndpoint(endpoint: string) {
+  const normalized = endpoint.trim().replace(/\/+$/u, "");
+  // Providers often document a base URL ending in /v1 or /v4. Accept both
+  // that form and a fully-qualified /chat/completions endpoint in the admin UI.
+  return /\/v\d+$/u.test(normalized) ? normalized + "/chat/completions" : normalized;
+}
+
 const SYSTEM_PROMPT = [
   "You analyze Chinese recruitment postings for job seekers.",
   "Use only the supplied source text. Never invent a value.",
@@ -271,7 +278,7 @@ export async function callJobAnalysisAI(rawText: string): Promise<AIAnalysisOutp
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (config.apiKeyHeader.toLowerCase() === "authorization") headers[config.apiKeyHeader] = "Bearer " + config.apiKey;
     else headers[config.apiKeyHeader] = config.apiKey;
-    const response = await fetch(config.endpoint, {
+    const response = await fetch(chatCompletionEndpoint(config.endpoint), {
       method: "POST",
       headers,
       body: JSON.stringify({
