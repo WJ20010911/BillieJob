@@ -115,6 +115,18 @@ export default function AdminDashboard() {
     setAIConfig((previous) => previous ? { ...previous, [key]: value } : previous);
   };
 
+  const useZhipuPreset = () => {
+    setAIConfig((previous) => previous ? {
+      ...previous,
+      provider: "智谱 BigModel",
+      endpoint: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      model: "glm-4-flash",
+      apiKeyHeader: "Authorization",
+      enabled: true,
+    } : previous);
+    setAIMessage("已填入智谱 GLM-4-Flash 配置，请填写 API Key 后保存。截图识别将优先尝试智谱文件解析。");
+  };
+
   const saveAIConfiguration = async () => {
     if (!aiConfig) return;
     setAISaving(true);
@@ -210,9 +222,12 @@ export default function AdminDashboard() {
           <div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-end">
             <div>
               <h2 className="text-lg font-bold text-slate-950">AI 招聘分析配置</h2>
-              <p className="mt-1 text-xs leading-5 text-slate-500">支持 DeepSeek、OpenRouter 及其他 OpenAI 兼容的 chat/completions 接口。密钥不会返回浏览器。</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">支持 DeepSeek、智谱 BigModel、OpenRouter 及其他 OpenAI 兼容的 chat/completions 接口。密钥不会返回浏览器。</p>
             </div>
-            <span className={aiConfig.apiKeyConfigured ? "border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700" : "border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700"}>{aiConfig.apiKeyConfigured ? "密钥已配置" : "尚未配置密钥"}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button type="button" onClick={useZhipuPreset} className="border-2 border-indigo-700 bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">使用智谱免费模型</button>
+              <span className={aiConfig.apiKeyConfigured ? "border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700" : "border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700"}>{aiConfig.apiKeyConfigured ? "密钥已配置" : "尚未配置密钥"}</span>
+            </div>
           </div>
           {!aiConfig.encryptionConfigured ? <p className="mt-4 border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">服务器未设置 AI_CONFIG_ENCRYPTION_KEY，将使用 ADMIN_PASSWORD 作为加密材料。生产环境建议设置独立的长随机值。</p> : null}
           <div className="mt-5 grid gap-4 sm:grid-cols-2">

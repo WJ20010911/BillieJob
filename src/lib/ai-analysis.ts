@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 const CONFIG_KEY = "ai_analysis";
 const OCR_CONFIG_KEY = "ocr_space";
 const DEFAULT_ENDPOINT = "https://api.deepseek.com/chat/completions";
+const ZHIPU_FILE_SYNC_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/files/parser/sync";
 
 export interface AIConfig {
   provider: string;
@@ -131,6 +132,104 @@ export async function saveOCRApiKey(apiKey: string, clearApiKey = false) {
 
 export async function hasOCRApiKey() {
   return Boolean(await getOCRApiKey());
+}
+
+function findParsedText(value: unknown, depth = 0): string {
+  if (depth > 5 || value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value.map((item) => findParsedText(item, depth + 1)).filter(Boolean).join("\n").trim();
+  }
+  if (typeof value !== "object") return "";
+  const record = value as Record<string, unknown>;
+  for (const key of ["text", "content", "markdown", "file_content", "parsed_text", "result", "data"]) {
+    const text = findParsedText(record[key], depth + 1);
+    if (text.length >= 12) return text;
+  }
+  return "";
+}
+
+function findTaskId(value: unknown, depth = 0): string {
+  if (depth > 4 || value === null || typeof value !== "object") return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = findTaskId(item, depth + 1);
+      if (id) return id;
+    }
+    return "";
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of ["task_id", "taskId", "id"]) {
+    if (typeof record[key] === "string" && record[key]) return record[key];
+  }
+  for (const key of ["data", "result"]) {
+    const id = findTaskId(record[key], depth + 1);
+    if (id) return id;
+  }
+  return "";
+}
+
+function taskState(payload: unknown) {
+  if (!payload || typeof payload !== "object") return "";
+  const record = payload as Record<string, unknown>;
+  for (const key of ["task_status", "taskStatus", "status"]) {
+    if (typeof record[key] === "string") return record[key].toUpperCase();
+  }
+  return "";
+}
+
+async function parseZhipuResponse(response: Response) {
+  const body = await response.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    throw new Error("智谱文件解析返回了无效响应");
+  }
+  if (!response.ok) throw new Error("智谱文件解析接口返回 " + response.status + "：" + body.slice(0, 240));
+  return payload;
+}
+
+export async function callZhipuFileParser(file: File, apiKey: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 50000);
+  const upload = async (endpoint: string) => {
+    const form = new FormData();
+    form.append("file", file, file.name || "recruitment-file");
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + apiKey },
+      body: form,
+      signal: controller.signal,
+    });
+    return parseZhipuResponse(response);
+  };
+
+  try {
+    let payload = await upload(ZHIPU_FILE_SYNC_ENDPOINT);
+    let text = findParsedText(payload);
+    if (text) return text;
+
+    const taskId = findTaskId(payload);
+    if (!taskId) throw new Error("智谱文件解析未返回任务编号或文本");
+    const resultEndpoint = "https://open.bigmodel.cn/api/paas/v4/files/parser/result/" + encodeURIComponent(taskId) + "/text";
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const response = await fetch(resultEndpoint, { headers: { Authorization: "Bearer " + apiKey }, signal: controller.signal });
+      payload = await parseZhipuResponse(response);
+      text = findParsedText(payload);
+      if (text) return text;
+      const state = taskState(payload);
+      if (["FAILED", "ERROR", "CANCELED", "CANCELLED"].includes(state)) throw new Error("智谱文件解析任务失败");
+      if (["SUCCESS", "SUCCEEDED", "COMPLETED"].includes(state)) break;
+    }
+    throw new Error("智谱文件解析超时，请稍后重试");
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new Error("智谱文件解析超时");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function contentFromResponse(payload: unknown) {

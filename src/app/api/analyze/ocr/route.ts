@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getOCRApiKey } from "@/lib/ai-analysis";
+import { callZhipuFileParser, getAIConfig, getOCRApiKey } from "@/lib/ai-analysis";
 
 const SESSION_COOKIE = "admin_session";
 
 export async function POST(request: NextRequest) {
-  const apiKey = await getOCRApiKey();
-  if (!apiKey) {
-    return NextResponse.json({ error: "OCR.space API key is not configured on the server" }, { status: 503 });
-  }
-
   try {
     const input = await request.formData();
     const file = input.get("file");
@@ -16,6 +11,21 @@ export async function POST(request: NextRequest) {
     if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "Only images up to 10MB are supported" }, { status: 400 });
     }
+
+    const aiConfig = await getAIConfig();
+    const provider = aiConfig?.provider.toLowerCase() || "";
+    const isZhipu = provider.includes("zhipu") || provider.includes("智谱") || aiConfig?.endpoint.includes("bigmodel.cn");
+    if (aiConfig?.enabled && isZhipu && aiConfig.apiKey) {
+      try {
+        const text = await callZhipuFileParser(file, aiConfig.apiKey);
+        if (text) return NextResponse.json({ text, provider: "zhipu" });
+      } catch (error) {
+        console.warn("Zhipu file parser failed, falling back to OCR.space:", error);
+      }
+    }
+
+    const apiKey = await getOCRApiKey();
+    if (!apiKey) return NextResponse.json({ error: "请在管理员配置中填写 OCR.space 密钥，或启用智谱 AI 文件解析。" }, { status: 503 });
 
     const payload = new FormData();
     payload.append("file", file, file.name);
