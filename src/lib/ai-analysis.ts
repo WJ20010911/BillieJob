@@ -257,7 +257,7 @@ const SYSTEM_PROMPT = [
   "If a field is absent, use value NOT_MENTIONED and state missing.",
   "If a label exists but its amount or rule is unclear, use state unclear and quote the label.",
   "Return JSON only, with no markdown.",
-  "The fields are: salary, salaryStructure, salaryBase, commission, performance, duties, location, requirements, workTime, dailyHours, weeklyHours, weeklyWorkDays, shiftWork, overtimePolicy, benefits, monthlyAllowance, dailyAllowance, mealAllowance, transportAllowance, housingAllowance, bonus, socialBenefits, employment, process.",
+  "The fields are: salary, salaryRange, salaryStructure, salaryBase, commission, performance, taskRequirement, duties, location, requirements, workTime, dailyHours, weeklyHours, weeklyWorkDays, shiftWork, overtimePolicy, benefits, monthlyAllowance, dailyAllowance, mealAllowance, transportAllowance, housingAllowance, bonus, socialBenefits, employment, process.",
   "Return fields as an object, findings as an array with category, item, level, evidence, suggestion, and strengths as an array.",
 ].join(" ");
 
