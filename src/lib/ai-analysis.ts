@@ -304,6 +304,33 @@ export async function callJobAnalysisAI(rawText: string): Promise<AIAnalysisOutp
   }
 }
 
+export async function testAIConnection() {
+  const config = await getAIConfig();
+  if (!config?.enabled || !config.apiKey || !config.endpoint || !config.model) return false;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (config.apiKeyHeader.toLowerCase() === "authorization") headers[config.apiKeyHeader] = "Bearer " + config.apiKey;
+    else headers[config.apiKeyHeader] = config.apiKey;
+    const response = await fetch(chatCompletionEndpoint(config.endpoint), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ model: config.model, max_tokens: 16, messages: [{ role: "user", content: "Reply with OK." }] }),
+      signal: controller.signal,
+    });
+    const body = await response.text();
+    if (!response.ok) throw new Error("AI service returned " + response.status + ": " + body.slice(0, 300));
+    if (!contentFromResponse(JSON.parse(body)).trim()) throw new Error("AI 服务返回了空内容");
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new Error("AI 测试请求在 15 秒内未返回，请检查模型名称、账号额度或服务状态。");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function aiConfigDefaults() {
   return { provider: "DeepSeek", endpoint: DEFAULT_ENDPOINT, model: "deepseek-chat", apiKeyHeader: "Authorization", enabled: false };
 }

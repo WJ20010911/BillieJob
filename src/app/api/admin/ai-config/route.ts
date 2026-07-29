@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { aiConfigDefaults, callJobAnalysisAI, getAIConfig, hasAIEncryptionSecret, saveAIConfig } from "@/lib/ai-analysis";
+import { aiConfigDefaults, getAIConfig, hasAIEncryptionSecret, saveAIConfig, testAIConnection } from "@/lib/ai-analysis";
 
 const SESSION_COOKIE = "admin_session";
 const SESSION_TOKEN = "admin-logged-in";
@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const result = await callJobAnalysisAI("职位：测试岗位。薪资：无责底薪8K，提成3%。工作时间：每周40小时，双休。");
+    const result = await testAIConnection();
     if (!result) return NextResponse.json({ error: "请先保存并启用 AI 配置，同时填写 API 密钥。" }, { status: 400 });
     return NextResponse.json({ success: true, message: "AI 接口连接成功，已收到结构化 JSON。" });
   } catch (error) {
