@@ -48,18 +48,18 @@ const WORDS = {
 
 // Monthly urban disposable-income reference, rounded from each city's 2024 public statistical bulletin.
 // It is a purchasing-power reference, not a wage standard or a personal rent estimate.
-const CITY_REFERENCE: Record<string, { monthlyIncome: number; referenceYear: number }> = {
-  "\u5317\u4eac": { monthlyIncome: 7850, referenceYear: 2024 },
-  "\u4e0a\u6d77": { monthlyIncome: 7750, referenceYear: 2024 },
-  "\u5e7f\u5dde": { monthlyIncome: 6900, referenceYear: 2024 },
-  "\u6df1\u5733": { monthlyIncome: 6800, referenceYear: 2024 },
-  "\u676d\u5dde": { monthlyIncome: 7000, referenceYear: 2024 },
-  "\u5357\u4eac": { monthlyIncome: 6200, referenceYear: 2024 },
-  "\u82cf\u5dde": { monthlyIncome: 6000, referenceYear: 2024 },
-  "\u6210\u90fd": { monthlyIncome: 4700, referenceYear: 2024 },
-  "\u6b66\u6c49": { monthlyIncome: 4700, referenceYear: 2024 },
-  "\u91cd\u5e86": { monthlyIncome: 4000, referenceYear: 2024 },
-  "\u897f\u5b89": { monthlyIncome: 4000, referenceYear: 2024 },
+const CITY_REFERENCE: Record<string, { monthlyIncome: number; socialBaseMin: number; referenceYear: number }> = {
+  "\u5317\u4eac": { monthlyIncome: 7850, socialBaseMin: 6821, referenceYear: 2024 },
+  "\u4e0a\u6d77": { monthlyIncome: 7750, socialBaseMin: 7384, referenceYear: 2024 },
+  "\u5e7f\u5dde": { monthlyIncome: 6900, socialBaseMin: 5284, referenceYear: 2024 },
+  "\u6df1\u5733": { monthlyIncome: 6800, socialBaseMin: 6475, referenceYear: 2024 },
+  "\u676d\u5dde": { monthlyIncome: 7000, socialBaseMin: 4812, referenceYear: 2024 },
+  "\u5357\u4eac": { monthlyIncome: 6200, socialBaseMin: 4879, referenceYear: 2024 },
+  "\u82cf\u5dde": { monthlyIncome: 6000, socialBaseMin: 4879, referenceYear: 2024 },
+  "\u6210\u90fd": { monthlyIncome: 4700, socialBaseMin: 4511, referenceYear: 2024 },
+  "\u6b66\u6c49": { monthlyIncome: 4700, socialBaseMin: 4233, referenceYear: 2024 },
+  "\u91cd\u5e86": { monthlyIncome: 4000, socialBaseMin: 4359, referenceYear: 2024 },
+  "\u897f\u5b89": { monthlyIncome: 4000, socialBaseMin: 4309, referenceYear: 2024 },
 };
 
 function getUserId(request: NextRequest) {
@@ -158,6 +158,20 @@ function monthlyIndividualIncomeTax(amount: number) {
   if (taxable <= 55000) return taxable * 0.3 - 4410;
   if (taxable <= 80000) return taxable * 0.35 - 7160;
   return taxable * 0.45 - 15160;
+}
+
+function takeHomeEstimate(city: string, fixed: number, includesHousingFund: boolean) {
+  const rule = CITY_REFERENCE[city];
+  if (!rule || !fixed) return "";
+  const contributionBase = Math.max(fixed, rule.socialBaseMin);
+  // Employee pension, medical and unemployment contributions are approximated at 10.5%.
+  const social = Math.round(contributionBase * 0.105);
+  const housingLow = includesHousingFund ? Math.round(contributionBase * 0.05) : 0;
+  const housingHigh = includesHousingFund ? Math.round(contributionBase * 0.12) : 0;
+  const netLow = Math.round(fixed - social - housingHigh - monthlyIndividualIncomeTax(fixed - social - housingHigh));
+  const netHigh = Math.round(fixed - social - housingLow - monthlyIndividualIncomeTax(fixed - social - housingLow));
+  const range = netLow === netHigh ? `${netLow} \u5143/\u6708` : `${netLow}-${netHigh} \u5143/\u6708`;
+  return `\u7ea6 ${range}\uff08\u6309 ${rule.referenceYear} \u5e74${city}\u6700\u4f4e\u7f34\u8d39\u57fa\u6570 ${rule.socialBaseMin} \u5143\u3001\u4e2a\u4eba\u793e\u4fdd\u7ea6 10.5%${includesHousingFund ? "\u3001\u516c\u79ef\u91d1 5%-12%" : "\uff0c\u516c\u79ef\u91d1\u672a\u5728\u539f\u6587\u4e2d\u786e\u8ba4"}\u4f30\u7b97\uff09`;
 }
 
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
@@ -278,6 +292,9 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.housingAllowance = { value: housingValue || WORDS.missing, state: housingValue ? "found" : "missing" };
   fields.bonus = { value: bonusValue || WORDS.missing, state: bonusValue ? "found" : "missing" };
   fields.socialBenefits = { value: socialValue || WORDS.missing, state: socialValue ? "found" : "missing" };
+  const withHousingFund = /\u4e94\u9669\u4e00\u91d1|\u516c\u79ef\u91d1/u.test(socialValue);
+  const takeHomeStages = socialValue && CITY_REFERENCE[locationValue] ? [probationStage ? `\u8bd5\u7528\u671f\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, probationStage.fixed, withHousingFund)}` : "", regularStage ? `\u8f6c\u6b63\u540e\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, regularStage.fixed, withHousingFund)}` : ""].filter(Boolean) : [];
+  fields.estimatedTakeHome = { value: takeHomeStages.length ? takeHomeStages.join("\uff1b") : WORDS.missing, state: takeHomeStages.length ? "unclear" : "missing" };
 
   if (!salaryFound) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u7f3a\u5c11\u660e\u786e\u7684\u85aa\u8d44\u8303\u56f4", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u6708\u85aa\u3001\u5e74\u85aa\u6216\u85aa\u8d44\u533a\u95f4\u3002", suggestion: "\u786e\u8ba4\u6708\u85aa/\u5e74\u85aa\u8303\u56f4\u3001\u56fa\u5b9a\u85aa\u8d44\u3001\u7ee9\u6548\u63d0\u6210\u548c\u8bd5\u7528\u671f\u85aa\u8d44\u3002" });
   else if (salaryUnclear) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u85aa\u8d44\u53ea\u6709\u9762\u8bae\u6216\u7b3c\u7edf\u8868\u8ff0", level: "medium", evidence: `\u8bc6\u522b\u5230\uff1a${fields.salary.value}\uff0c\u4f46\u6ca1\u6709\u5177\u4f53\u6570\u5b57\u3002`, suggestion: "\u8981\u6c42\u5bf9\u65b9\u7ed9\u51fa\u5e95\u85aa\u3001\u7ee9\u6548\u3001\u63d0\u6210\u548c\u8bd5\u7528\u671f\u7684\u5177\u4f53\u8303\u56f4\u3002" });

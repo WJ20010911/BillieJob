@@ -59,6 +59,7 @@ const fieldLabels: Record<string, string> = {
   probationCompensation: "\u8bd5\u7528\u671f\u5f85\u9047",
   regularCompensation: "\u8f6c\u6b63\u540e\u5f85\u9047",
   afterTaxIncome: "\u4e2a\u7a0e\u540e\u56fa\u5b9a\u6536\u5165",
+  estimatedTakeHome: "\u793e\u4fdd/\u516c\u79ef\u91d1\u540e\u9884\u4f30\u5230\u624b",
   taskRequirement: "\u4efb\u52a1/KPI \u8981\u6c42",
   duties: "工作内容",
   location: "工作地点",
