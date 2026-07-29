@@ -97,6 +97,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value));
 }
 
+function editableValue(field: { value: string; state: "found" | "missing" | "unclear" } | undefined) {
+  if (!field || field.state === "missing") return "";
+  return field.value;
+}
+
 function extractJobMeta(ocrText: string) {
   const lines = ocrText.split(/\r?\n/u).map((line) => line.replace(/\s+/gu, " ").trim()).filter(Boolean);
   const detailIndex = lines.findIndex((line) => /职位详情|岗位详情|职位描述/u.test(line));
@@ -134,6 +139,10 @@ export default function AnalyzePage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [activeArchiveId, setActiveArchiveId] = useState<number | null>(null);
+  const [screen, setScreen] = useState<"input" | "result">("input");
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [savedField, setSavedField] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [showLogin, setShowLogin] = useState(false);
   const [loginInput, setLoginInput] = useState("");
@@ -244,6 +253,8 @@ export default function AnalyzePage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "分析失败");
       setResult(data.result);
+      setActiveArchiveId(data.item.id);
+      setScreen("result");
       setArchives((previous) => [data.item, ...previous]);
       setMessage("分析已完成并存档，可以在下方选择多个职位进行对比");
     } catch (error) {
@@ -263,7 +274,57 @@ export default function AnalyzePage() {
     if (response.ok) {
       setArchives((previous) => previous.filter((item) => item.id !== id));
       setSelectedIds((previous) => previous.filter((item) => item !== id));
+      if (activeArchiveId === id) {
+        setActiveArchiveId(null);
+        setResult(null);
+      }
     }
+  };
+
+  const updateField = (fieldKey: string, value: string) => {
+    setResult((previous) => previous ? { ...previous, fields: { ...previous.fields, [fieldKey]: { value, state: value.trim() ? "found" : "missing" } } } : previous);
+    setSavedField(null);
+  };
+
+  const saveField = async (fieldKey: string) => {
+    if (!user || !result || !activeArchiveId || savingField === fieldKey) return;
+    const field = result.fields[fieldKey];
+    setSavingField(fieldKey);
+    try {
+      const response = await fetch("/api/analyze", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-user-id": String(user.id) },
+        body: JSON.stringify({ id: activeArchiveId, fieldKey, value: field.value, state: field.state }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "保存修改失败");
+      setResult(data.item.result);
+      setArchives((previous) => previous.map((item) => item.id === data.item.id ? data.item : item));
+      setSavedField(fieldKey);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "保存修改失败");
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const openArchive = (item: ArchiveItem) => {
+    setResult(item.result);
+    setActiveArchiveId(item.id);
+    setSavedField(null);
+    setScreen("result");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const clearDraft = () => {
+    setTitle("");
+    setCompanyName("");
+    setSource("");
+    setRawText("");
+    setImageUrl("");
+    setImagePreview("");
+    setImageFile(null);
+    setMessage("");
   };
 
   const handleLogin = async () => {
@@ -290,7 +351,8 @@ export default function AnalyzePage() {
   if (!authReady) return <div className="mx-auto max-w-6xl px-4 py-20 text-center text-sm text-slate-400">正在准备分析工具...</div>;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+    <div className={screen === "result" ? "min-h-screen bg-slate-100" : "mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12"}>
+      {screen === "input" ? <>
       <header className="flex flex-col justify-between gap-5 border-b border-slate-200 pb-7 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-700">Job signal check</p>
@@ -302,7 +364,7 @@ export default function AnalyzePage() {
 
       {!user ? <div className="mt-6 border-2 border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">分析可以浏览，保存和对比需要先登录。<button type="button" onClick={() => setShowLogin(true)} className="ml-2 font-bold underline underline-offset-4">登录</button></div> : null}
 
-      <main className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <main className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
         <section className="border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)] sm:p-7">
           <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
             <div><h2 className="text-lg font-bold text-slate-950">1. 上传并补充招聘信息</h2><p className="mt-1 text-xs text-slate-500">截图作为原始证据保存；文字请从截图中复制或校对后粘贴。</p></div>
@@ -314,7 +376,6 @@ export default function AnalyzePage() {
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImage} className="hidden" />
           </label>
           {uploading ? <p className="mt-2 text-xs text-cyan-700">正在保存截图...</p> : null}
-          {imageFile ? <button type="button" onClick={() => void runOcr()} disabled={ocrLoading} className="mt-3 inline-flex h-10 items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-wait disabled:opacity-60">{ocrLoading ? "OCR..." : "尝试识别截图文字"}</button> : null}
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold text-slate-800">分析标题<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：某公司产品经理 JD" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
@@ -323,21 +384,43 @@ export default function AnalyzePage() {
           <label className="mt-4 block text-sm font-semibold text-slate-800">来源平台（可选）<input value={source} onChange={(event) => setSource(event.target.value)} placeholder="例如：BOSS 直聘、猎聘、微信群" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
           <label className="mt-4 block text-sm font-semibold text-slate-800">招聘文字 <span className="font-normal text-slate-400">（必填，截图识别/复制后粘贴）</span><textarea value={rawText} onChange={(event) => setRawText(event.target.value)} rows={8} placeholder="把截图中的职位名称、职责、薪资、工作地点、要求等文字粘贴到这里，系统会按字段分析..." className="mt-2 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm font-normal leading-6 outline-none focus:border-cyan-600" /></label>
           {message ? <p className="mt-4 border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">{message}</p> : null}
-          <button type="button" onClick={() => void runAnalysis()} disabled={analyzing || uploading} className="mt-5 inline-flex h-12 w-full items-center justify-center border-2 border-slate-950 bg-cyan-600 px-6 text-sm font-bold text-white shadow-[0_5px_0_#0f172a] transition hover:bg-cyan-700 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-60">{analyzing ? "正在分析并存档..." : "开始分析招聘信息"}</button>
         </section>
 
-        <aside className="space-y-5">
-          {result ? <section className="border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)]"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Analysis result</p><h2 className="mt-2 text-lg font-bold text-slate-950">风险概览</h2></div><div className={`border px-3 py-2 text-center ${scoreStyle(result.riskScore)}`}><div className="text-2xl font-bold">{result.riskScore}</div><div className="text-[10px] font-bold">完整度</div></div></div><p className="mt-4 text-sm leading-6 text-slate-600">{result.summary}</p>{result.strengths.length > 0 ? <div className="mt-4 border-t border-slate-100 pt-4"><p className="text-xs font-bold text-emerald-700">已识别的正向信息</p><div className="mt-2 flex flex-wrap gap-2">{result.strengths.map((item) => <span key={item} className="bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{item}</span>)}</div></div> : null}</section> : <section className="border-2 border-slate-200 bg-slate-50 p-5"><h2 className="text-lg font-bold text-slate-950">你会得到什么</h2><div className="mt-4 space-y-3 text-sm leading-6 text-slate-600"><p><b className="text-slate-950">字段检查：</b>薪资、地点、职责、福利、工时、用工类型。</p><p><b className="text-slate-950">风险提醒：</b>面议、纯提成、职责泛化、加班制度缺失等。</p><p><b className="text-slate-950">横向比较：</b>从存档中选择最多 4 个职位，放在同一张表里比较。</p></div></section>}
-          {result?.cityReference ? <section className="border-2 border-cyan-200 bg-cyan-50/40 p-5"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">City purchasing power</p><h2 className="mt-2 text-base font-bold text-slate-950">{result.cityReference.city} 城市购买力</h2></div><span className="border border-cyan-200 bg-white px-2 py-1 text-sm font-bold text-cyan-800">{result.cityReference.score}/20</span></div><p className="mt-3 text-sm font-semibold text-slate-900">{result.cityReference.level}</p><p className="mt-2 text-xs leading-5 text-slate-600">固定月薪下限 {result.cityReference.salaryFloor} 元，约为 {result.cityReference.referenceYear} 年城市月度生活参考 {result.cityReference.monthlyIncome} 元的 {Math.round(result.cityReference.ratio * 100)}%。不含房租、家庭负担和补贴。</p></section> : null}
-          {result ? <section className="border-2 border-slate-200 bg-white p-5"><h2 className="text-base font-bold text-slate-950">招聘信息明细</h2><p className="mt-1 text-xs text-slate-400">绿色为原文已确认，黄色为根据原文推算或仍需核实。</p><div className="mt-3 space-y-2">{Object.keys(fieldLabels).filter((key) => (result.fields[key]?.state || "missing") !== "missing").map((key) => { const field = result.fields[key]; return <div key={key} className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 text-sm"><span className="w-28 shrink-0 text-slate-600">{fieldLabels[key]}</span><span className={"min-w-0 break-words text-right " + (field.state === "found" ? "font-semibold text-emerald-700" : "font-semibold text-amber-700")}>{field.value}</span></div>; })}</div>{(() => { const missing = Object.keys(fieldLabels).filter((key) => (result.fields[key]?.state || "missing") === "missing"); return missing.length ? <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-xs font-bold text-slate-500">仍需确认（{missing.length} 项）</p><div className="mt-2 flex flex-wrap gap-1.5">{missing.map((key) => <span key={key} className="border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500">{fieldLabels[key]}</span>)}</div></div> : null; })()}</section> : null}
+        <aside className="h-fit border-2 border-slate-200 bg-white p-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Actions</p>
+          <h2 className="mt-2 text-lg font-bold text-slate-950">操作面板</h2>
+          <p className="mt-2 text-xs leading-5 text-slate-500">上传截图后先识别文字；确认左侧内容后开始分析。</p>
+          <div className="mt-5 space-y-3">
+            <button type="button" onClick={() => void runAnalysis()} disabled={analyzing || uploading} className="inline-flex h-12 w-full items-center justify-center border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white shadow-[0_5px_0_#0f172a] transition hover:bg-cyan-700 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-60">{analyzing ? "正在分析..." : "开始分析"}</button>
+            <button type="button" onClick={() => void runOcr()} disabled={!imageFile || ocrLoading} className="inline-flex h-11 w-full items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">{ocrLoading ? "识别中..." : "识别截图文字"}</button>
+            <button type="button" onClick={clearDraft} disabled={analyzing || uploading} className="inline-flex h-10 w-full items-center justify-center border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50">清空本次输入</button>
+          </div>
+          {activeArchiveId ? <div className="mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">本次会更新已打开的存档；新的分析会另存为新记录。</div> : null}
         </aside>
+
       </main>
 
-      {result ? <section className="mt-8 border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)] sm:p-7"><div className="flex items-end justify-between gap-4 border-b border-slate-100 pb-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Findings</p><h2 className="mt-2 text-xl font-bold text-slate-950">问题与待确认事项</h2></div><span className="text-sm font-bold text-slate-500">{result.findings.length} 项</span></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b-2 border-slate-200 text-xs text-slate-500"><tr><th className="px-3 py-3">类别</th><th className="px-3 py-3">判断</th><th className="px-3 py-3">截图中的依据</th><th className="px-3 py-3">建议追问</th></tr></thead><tbody>{result.findings.map((finding) => { const level = levelLabel(finding.level); return <tr key={`${finding.category}-${finding.item}`} className="border-b border-slate-100 align-top"><td className="px-3 py-4 font-semibold text-slate-800">{finding.category}</td><td className="px-3 py-4"><div className="font-semibold text-slate-900">{finding.item}</div><span className={`mt-2 inline-flex px-2 py-1 text-xs font-bold ${level.style}`}>{level.text}</span></td><td className="px-3 py-4 leading-6 text-slate-600">{finding.evidence}</td><td className="px-3 py-4 leading-6 text-slate-600">{finding.suggestion}</td></tr>; })}</tbody></table></div></section> : null}
+      </> : null}
 
-      <section className="mt-8 border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)] sm:p-7"><div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Archive & compare</p><h2 className="mt-2 text-xl font-bold text-slate-950">分析存档与职位对比</h2><p className="mt-2 text-sm text-slate-500">勾选 2-4 条分析，比较信息完整度和风险缺口。</p></div><span className="text-xs font-bold text-slate-400">已选 {selectedArchives.length} / 4</span></div>{archives.length === 0 ? <p className="py-10 text-center text-sm text-slate-400">完成第一次分析后，存档会出现在这里。</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{archives.map((item) => <div key={item.id} className={`border p-4 transition ${selectedIds.includes(item.id) ? "border-cyan-600 bg-cyan-50/40" : "border-slate-200 bg-white"}`}><div className="flex items-start gap-3"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelected(item.id)} className="mt-1 h-4 w-4 accent-cyan-600" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="truncate font-bold text-slate-950">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{item.companyName || "未填写公司"} {item.source ? `· ${item.source}` : ""}</p></div><span className={`shrink-0 px-2 py-1 text-xs font-bold ${scoreStyle(item.riskScore)}`}>{item.riskScore}</span></div><p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{item.result.summary}</p><div className="mt-3 flex items-center justify-between text-xs text-slate-400"><span>{formatDate(item.createdAt)}</span><button type="button" onClick={() => void deleteArchive(item.id)} className="font-semibold text-red-500 hover:text-red-700">删除存档</button></div></div></div></div>)}</div>}
+      {result && screen === "result" ? <section className="w-full border-y-2 border-slate-900 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.08)]">
+        <div className="flex min-h-16 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 sm:px-8"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-950">{activeArchiveId ? "已打开分析存档" : "新分析结果"}</p><p className="text-xs text-slate-500">字段修改会自动保存</p></div><button type="button" onClick={() => { setScreen("input"); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="inline-flex h-10 shrink-0 items-center justify-center border-2 border-slate-900 bg-white px-4 text-sm font-bold text-slate-900 transition hover:bg-slate-100">返回编辑</button></div>
+        <div className="flex flex-col gap-5 border-b-2 border-slate-900 bg-slate-950 px-5 py-6 text-white sm:px-7 lg:flex-row lg:items-center lg:justify-between">
+          <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Analysis result</p><h2 className="mt-2 text-2xl font-bold">招聘信息分析结果</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{result.summary}</p></div>
+          <div className="flex items-center gap-3"><div className={`border bg-white px-4 py-2 text-center ${scoreStyle(result.riskScore)} `}><div className="text-3xl font-bold">{result.riskScore}</div><div className="text-[11px] font-bold">信息完整度</div></div><div className="text-xs leading-5 text-slate-300">{activeArchiveId ? "编辑后自动保存到当前存档" : "分析完成后会自动存档"}</div></div>
+        </div>
+        <div className="p-5 sm:p-7">
+          {result.strengths.length > 0 ? <div className="border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold text-emerald-800">已确认的信息</p><div className="mt-2 flex flex-wrap gap-2">{result.strengths.map((item) => <span key={item} className="border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">{item}</span>)}</div></div> : null}
+          {result.cityReference ? <div className="mt-4 flex flex-col gap-3 border border-cyan-200 bg-cyan-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-bold text-slate-900">{result.cityReference.city} 城市购买力：{result.cityReference.level}</p><p className="mt-1 text-xs text-slate-600">固定月薪下限 {result.cityReference.salaryFloor} 元，约为 {result.cityReference.referenceYear} 年城市月度生活参考 {result.cityReference.monthlyIncome} 元的 {Math.round(result.cityReference.ratio * 100)}%。</p></div><span className="shrink-0 border border-cyan-200 bg-white px-3 py-1 text-sm font-bold text-cyan-800">{result.cityReference.score}/20</span></div> : null}
+          <div className="mt-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><h3 className="text-xl font-bold text-slate-950">识别明细</h3><p className="mt-1 text-sm text-slate-500">直接改写任意内容，离开输入框后自动保存。空白字段可手动补充，不再用“未在文字中提及”占据页面。</p></div><span className="text-xs font-semibold text-slate-500">{savingField ? "正在保存修改..." : savedField ? "已保存，并记录为校正样本" : "绿色：原文确认；黄色：推算或待核实"}</span></div>
+          <div className="mt-5 grid gap-x-5 gap-y-3 md:grid-cols-2 xl:grid-cols-3">{Object.keys(fieldLabels).map((key) => { const field = result.fields[key] || { value: "", state: "missing" as const }; const tone = field.state === "found" ? "border-emerald-200 bg-emerald-50/50" : field.state === "unclear" ? "border-amber-200 bg-amber-50/50" : "border-slate-200 bg-slate-50"; return <label key={key} className={`block border p-3 ${tone}`}><span className="flex items-center justify-between gap-2 text-xs font-bold text-slate-700">{fieldLabels[key]}<span className="shrink-0 text-[10px] font-medium text-slate-400">{savingField === key ? "保存中" : savedField === key ? "已保存" : field.state === "found" ? "已识别" : field.state === "unclear" ? "待核实" : "待补充"}</span></span><textarea value={editableValue(field)} onChange={(event) => updateField(key, event.target.value)} onBlur={() => void saveField(key)} rows={key === "duties" || key === "requirements" ? 3 : 2} placeholder="点击补充或修改" className="mt-2 block w-full resize-y border border-slate-300 bg-white px-2.5 py-2 text-sm leading-5 text-slate-800 outline-none focus:border-cyan-600" /></label>; })}</div>
+        </div>
+      </section> : null}
+
+      {result && screen === "result" ? <section className="border-b-2 border-slate-200 bg-white px-5 py-8 sm:px-8"><div className="mx-auto max-w-[1440px]"><div className="flex items-end justify-between gap-4 border-b border-slate-100 pb-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Findings</p><h2 className="mt-2 text-xl font-bold text-slate-950">问题与待确认事项</h2></div><span className="text-sm font-bold text-slate-500">{result.findings.length} 项</span></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b-2 border-slate-200 text-xs text-slate-500"><tr><th className="px-3 py-3">类别</th><th className="px-3 py-3">判断</th><th className="px-3 py-3">截图中的依据</th><th className="px-3 py-3">建议追问</th></tr></thead><tbody>{result.findings.map((finding) => { const level = levelLabel(finding.level); return <tr key={`${finding.category}-${finding.item}`} className="border-b border-slate-100 align-top"><td className="px-3 py-4 font-semibold text-slate-800">{finding.category}</td><td className="px-3 py-4"><div className="font-semibold text-slate-900">{finding.item}</div><span className={`mt-2 inline-flex px-2 py-1 text-xs font-bold ${level.style}`}>{level.text}</span></td><td className="px-3 py-4 leading-6 text-slate-600">{finding.evidence}</td><td className="px-3 py-4 leading-6 text-slate-600">{finding.suggestion}</td></tr>; })}</tbody></table></div></div></section> : null}
+
+      {screen === "input" ? <section className="mt-8 border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)] sm:p-7"><div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Archive & compare</p><h2 className="mt-2 text-xl font-bold text-slate-950">分析存档与职位对比</h2><p className="mt-2 text-sm text-slate-500">点击“查看并编辑”可重新打开一份存档；勾选 2-4 条可横向比较。</p></div><span className="text-xs font-bold text-slate-400">已选 {selectedArchives.length} / 4</span></div>{archives.length === 0 ? <p className="py-10 text-center text-sm text-slate-400">完成第一次分析后，存档会出现在这里。</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{archives.map((item) => <div key={item.id} className={`border p-4 transition ${activeArchiveId === item.id ? "border-slate-950 bg-slate-50" : selectedIds.includes(item.id) ? "border-cyan-600 bg-cyan-50/40" : "border-slate-200 bg-white"}`}><div className="flex items-start gap-3"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelected(item.id)} className="mt-1 h-4 w-4 accent-cyan-600" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="truncate font-bold text-slate-950">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{item.companyName || "未填写公司"} {item.source ? `· ${item.source}` : ""}</p></div><span className={`shrink-0 px-2 py-1 text-xs font-bold ${scoreStyle(item.riskScore)}`}>{item.riskScore}</span></div><p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{item.result.summary}</p><div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400"><span>{formatDate(item.createdAt)}</span><div className="flex items-center gap-3"><button type="button" onClick={() => openArchive(item)} className="font-semibold text-cyan-700 hover:text-cyan-900">查看并编辑</button><button type="button" onClick={() => void deleteArchive(item.id)} className="font-semibold text-red-500 hover:text-red-700">删除存档</button></div></div></div></div></div>)}</div>}
         {selectedArchives.length >= 2 ? <div className="mt-8 overflow-x-auto border-t-2 border-slate-100 pt-6"><h3 className="mb-3 text-base font-bold text-slate-950">横向比较表</h3><table className="w-full min-w-[680px] text-left text-sm"><thead className="border-b-2 border-slate-200"><tr><th className="px-3 py-3 text-slate-500">信息项</th>{selectedArchives.map((item) => <th key={item.id} className="px-3 py-3 font-bold text-slate-950">{item.title}</th>)}</tr></thead><tbody>{Object.keys(fieldLabels).map((key) => <tr key={key} className="border-b border-slate-100"><td className="px-3 py-3 font-semibold text-slate-700">{fieldLabels[key]}</td>{selectedArchives.map((item) => { const field = item.result.fields[key] || { value: "未在文字中提及", state: "missing" as const }; return <td key={item.id} className={`px-3 py-3 ${field.state === "missing" ? "font-semibold text-red-600" : field.state === "unclear" ? "font-semibold text-amber-700" : "text-emerald-700"}`}>{field.value}</td>; })}</tr>)}<tr className="border-b border-slate-100"><td className="px-3 py-3 font-semibold text-slate-700">问题数量</td>{selectedArchives.map((item) => <td key={item.id} className="px-3 py-3 font-bold text-slate-950">{item.result.findings.length} 项</td>)}</tr></tbody></table></div> : null}
-      </section>
+      </section> : null}
 
       <LoginDialog open={showLogin} title="登录后保存职位分析" description="登录后可以保存截图、查看历史分析，并比较多个职位。" value={loginInput} error={loginError} loading={logging} onChange={setLoginInput} onClose={() => { setShowLogin(false); setLoginError(""); setLoginInput(""); }} onSubmit={handleLogin} />
     </div>

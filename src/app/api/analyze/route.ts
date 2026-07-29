@@ -33,6 +33,10 @@ interface AnalysisResult {
   aiEnhanced?: boolean;
 }
 
+const editableFieldKeys = new Set([
+  "salaryRange", "salaryStructure", "salaryBase", "commission", "performance", "probationCompensation", "regularCompensation", "afterTaxIncome", "estimatedGross", "estimatedTakeHome", "taskRequirement", "duties", "location", "requirements", "workTime", "dailyHours", "weeklyHours", "weeklyWorkDays", "shiftWork", "overtimePolicy", "benefits", "monthlyAllowance", "dailyAllowance", "mealAllowance", "transportAllowance", "housingAllowance", "bonus", "socialBenefits", "employment", "process",
+]);
+
 const WORDS = {
   missing: "\u672a\u5728\u6587\u5b57\u4e2d\u63d0\u53ca",
   salary: "\u85aa\u8d44",
@@ -395,8 +399,23 @@ function serialize<T extends { resultJson: string; rawText: string; companyName:
   } catch {
     stored = null;
   }
-  const result = stored?.aiEnhanced ? stored : analyzeText(item.rawText, item.companyName);
+  // Old archives used a smaller field set. Re-analyze them on read so they can
+  // participate in the current full-width editor without losing new edits.
+  const result = stored?.fields?.salaryRange ? stored : analyzeText(item.rawText, item.companyName);
   return { ...item, riskScore: result.riskScore, result };
+}
+
+function applyLearnedCorrections(result: AnalysisResult, rawText: string, corrections: Array<{ fieldKey: string; sourceValue: string; correctedValue: string; state: string }>) {
+  const normalizedSource = normalizedForSourceCheck(rawText);
+  const fields = { ...result.fields };
+  for (const correction of corrections) {
+    if (!editableFieldKeys.has(correction.fieldKey) || !correction.sourceValue || !normalizedSource.includes(normalizedForSourceCheck(correction.sourceValue))) continue;
+    fields[correction.fieldKey] = {
+      value: correction.correctedValue,
+      state: correction.state === "unclear" ? "unclear" : "found",
+    };
+  }
+  return { ...result, fields };
 }
 
 export async function GET(request: NextRequest) {
@@ -420,12 +439,18 @@ export async function POST(request: NextRequest) {
     if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
     const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
     const deterministicResult = analyzeText(rawText, companyName);
-    let result = deterministicResult;
+    const learnedCorrections = await prisma.jobAnalysisCorrection.findMany({
+      where: { userId },
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+      select: { fieldKey: true, sourceValue: true, correctedValue: true, state: true },
+    });
+    let result = applyLearnedCorrections(deterministicResult, rawText, learnedCorrections);
     let aiUsed = false;
     try {
       const aiResult = await callJobAnalysisAI(rawText);
       if (aiResult) {
-        result = mergeAIResult(deterministicResult, aiResult, rawText);
+        result = mergeAIResult(result, aiResult, rawText);
         aiUsed = true;
       }
     } catch (error) {
@@ -437,6 +462,40 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Create analysis archive error:", error);
     return NextResponse.json({ error: "\u5206\u6790\u4fdd\u5b58\u5931\u8d25" }, { status: 500 });
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  const userId = getUserId(request);
+  if (!userId) return NextResponse.json({ error: "请先登录后保存修改" }, { status: 401 });
+  try {
+    const body = await request.json();
+    const id = Number(body.id);
+    const fieldKey = typeof body.fieldKey === "string" ? body.fieldKey : "";
+    const value = typeof body.value === "string" ? body.value.trim().slice(0, 500) : "";
+    const state: FieldState = body.state === "unclear" || !value ? (body.state === "unclear" && value ? "unclear" : "missing") : "found";
+    if (!Number.isInteger(id) || id < 1 || !editableFieldKeys.has(fieldKey)) return NextResponse.json({ error: "修改的字段无效" }, { status: 400 });
+    const item = await prisma.jobAnalysis.findFirst({ where: { id, userId } });
+    if (!item) return NextResponse.json({ error: "找不到该分析存档" }, { status: 404 });
+    const current = serialize(item).result;
+    const sourceValue = current.fields[fieldKey]?.value || "";
+    const result: AnalysisResult = {
+      ...current,
+      fields: { ...current.fields, [fieldKey]: { value: value || WORDS.missing, state } },
+    };
+    const updated = await prisma.jobAnalysis.update({
+      where: { id },
+      data: { resultJson: JSON.stringify(result) },
+    });
+    if (value && sourceValue && sourceValue !== value && !sourceValue.includes(WORDS.missing)) {
+      await prisma.jobAnalysisCorrection.create({
+        data: { userId, fieldKey, sourceValue, correctedValue: value, state },
+      });
+    }
+    return NextResponse.json({ success: true, item: serialize(updated) });
+  } catch (error) {
+    console.error("Update analysis archive error:", error);
+    return NextResponse.json({ error: "保存修改失败" }, { status: 500 });
   }
 }
 

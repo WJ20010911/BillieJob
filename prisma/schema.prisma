@@ -39,6 +39,7 @@ model User {
   favoriteRecords FavoriteRecord[]
   browseHistory  BrowseHistory[]
   jobAnalyses    JobAnalysis[]
+  jobAnalysisCorrections JobAnalysisCorrection[]
 }
 
 // 用户上传记录
@@ -154,6 +155,22 @@ model JobAnalysis {
   updatedAt   DateTime @updatedAt
 
   @@index([userId, createdAt])
+}
+
+// User corrections are retained as auditable examples. They are only reused when
+// the same source phrase is present in a later analysis for that user.
+model JobAnalysisCorrection {
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fieldKey       String
+  sourceValue    String
+  correctedValue String
+  state          String   @default("found")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId, fieldKey])
 }
 
 // 管理后台用户
