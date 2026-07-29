@@ -219,7 +219,7 @@ function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput): AnalysisResu
     const value = typeof candidate?.value === "string" ? candidate.value.trim() : "";
     if (!value || value === "NOT_MENTIONED" || value.length > 180) continue;
     const state = candidate?.state === "unclear" || candidate?.state === "missing" ? candidate.state : "found";
-    if (fields[key].state === "found") continue;
+    if (fields[key].state !== "missing") continue;
     if (state !== "missing") fields[key] = { value, state };
   }
   const findings = [...(ai.findings || []).map((item) => ({
