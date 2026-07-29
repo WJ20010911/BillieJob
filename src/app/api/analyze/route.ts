@@ -133,6 +133,8 @@ function cityReference(city: string, salary: string): CityReference | undefined 
 interface CompensationStage {
   fixed: number;
   detail: string;
+  mealPerDay: number;
+  overnightNight: number;
 }
 
 function compensationStage(segment: string): CompensationStage | undefined {
@@ -146,7 +148,7 @@ function compensationStage(segment: string): CompensationStage | undefined {
   if (!fixed && !mealPerDay && !overnightNight) return undefined;
   const items = [base ? `\u57fa\u672c\u5de5\u8d44 ${base} \u5143` : "", performance ? `\u7ee9\u6548 ${performance} \u5143` : "", monthlyNight ? `\u591c\u73ed\u5c97\u8865 ${monthlyNight} \u5143/\u6708` : ""].filter(Boolean);
   const variable = [mealPerDay ? `\u9910\u8865 ${mealPerDay} \u5143/\u5de5\u4f5c\u65e5` : "", overnightNight ? `\u901a\u5bb5\u591c\u73ed\u8865\u8d34 ${overnightNight} \u5143/\u665a` : ""].filter(Boolean);
-  return { fixed, detail: `\u56fa\u5b9a ${fixed} \u5143/\u6708\uff08${items.join(" + ")}\uff09${variable.length ? `\uff1b\u53e6\u6709 ${variable.join(" + ")}` : ""}` };
+  return { fixed, mealPerDay, overnightNight, detail: `\u56fa\u5b9a ${fixed} \u5143/\u6708\uff08${items.join(" + ")}\uff09${variable.length ? `\uff1b\u53e6\u6709 ${variable.join(" + ")}` : ""}` };
 }
 
 function monthlyIndividualIncomeTax(amount: number) {
@@ -160,18 +162,20 @@ function monthlyIndividualIncomeTax(amount: number) {
   return taxable * 0.45 - 15160;
 }
 
-function takeHomeEstimate(city: string, fixed: number, includesHousingFund: boolean) {
+function takeHomeEstimate(city: string, gross: number, includesHousingFund: boolean) {
   const rule = CITY_REFERENCE[city];
-  if (!rule || !fixed) return "";
-  const contributionBase = Math.max(fixed, rule.socialBaseMin);
+  if (!rule || !gross) return "";
+  const contributionBaseMin = rule.socialBaseMin;
+  const contributionBaseMax = Math.max(gross, rule.socialBaseMin);
   // Employee pension, medical and unemployment contributions are approximated at 10.5%.
-  const social = Math.round(contributionBase * 0.105);
-  const housingLow = includesHousingFund ? Math.round(contributionBase * 0.05) : 0;
-  const housingHigh = includesHousingFund ? Math.round(contributionBase * 0.12) : 0;
-  const netLow = Math.round(fixed - social - housingHigh - monthlyIndividualIncomeTax(fixed - social - housingHigh));
-  const netHigh = Math.round(fixed - social - housingLow - monthlyIndividualIncomeTax(fixed - social - housingLow));
+  const socialLow = Math.round(contributionBaseMin * 0.105);
+  const socialHigh = Math.round(contributionBaseMax * 0.105);
+  const housingLow = includesHousingFund ? Math.round(contributionBaseMin * 0.05) : 0;
+  const housingHigh = includesHousingFund ? Math.round(contributionBaseMax * 0.12) : 0;
+  const netLow = Math.round(gross - socialHigh - housingHigh - monthlyIndividualIncomeTax(gross - socialHigh - housingHigh));
+  const netHigh = Math.round(gross - socialLow - housingLow - monthlyIndividualIncomeTax(gross - socialLow - housingLow));
   const range = netLow === netHigh ? `${netLow} \u5143/\u6708` : `${netLow}-${netHigh} \u5143/\u6708`;
-  return `\u7ea6 ${range}\uff08\u6309 ${rule.referenceYear} \u5e74${city}\u6700\u4f4e\u7f34\u8d39\u57fa\u6570 ${rule.socialBaseMin} \u5143\u3001\u4e2a\u4eba\u793e\u4fdd\u7ea6 10.5%${includesHousingFund ? "\u3001\u516c\u79ef\u91d1 5%-12%" : "\uff0c\u516c\u79ef\u91d1\u672a\u5728\u539f\u6587\u4e2d\u786e\u8ba4"}\u4f30\u7b97\uff09`;
+  return `\u7ea6 ${range}\uff08\u6309 ${rule.referenceYear} \u5e74${city}\u7f34\u8d39\u57fa\u6570\u4ece\u6700\u4f4e ${contributionBaseMin} \u5143\u81f3\u5e94\u53d1\u5de5\u8d44\u3001\u4e2a\u4eba\u793e\u4fdd\u7ea6 10.5%${includesHousingFund ? "\u3001\u516c\u79ef\u91d1 5%-12%" : "\uff0c\u516c\u79ef\u91d1\u672a\u5728\u539f\u6587\u4e2d\u786e\u8ba4"}\u4f30\u7b97\uff09`;
 }
 
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
@@ -293,7 +297,15 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.bonus = { value: bonusValue || WORDS.missing, state: bonusValue ? "found" : "missing" };
   fields.socialBenefits = { value: socialValue || WORDS.missing, state: socialValue ? "found" : "missing" };
   const withHousingFund = /\u4e94\u9669\u4e00\u91d1|\u516c\u79ef\u91d1/u.test(socialValue);
-  const takeHomeStages = socialValue && CITY_REFERENCE[locationValue] ? [probationStage ? `\u8bd5\u7528\u671f\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, probationStage.fixed, withHousingFund)}` : "", regularStage ? `\u8f6c\u6b63\u540e\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, regularStage.fixed, withHousingFund)}` : ""].filter(Boolean) : [];
+  const monthlyRestDays = Number(capture(text, /\u6708\u4f11\s*(\d+(?:\.\d+)?)\s*\u5929/u) || 0);
+  const scheduledDays = monthlyRestDays ? Math.max(0, 30 - monthlyRestDays) : rotationMatch ? Math.round(30 * Number(rotationMatch[1]) / (Number(rotationMatch[1]) + Number(rotationMatch[2])) * 10) / 10 : weeklyDays ? Math.round(weeklyDays * 52 / 12 * 10) / 10 : 0;
+  const overnightSchedule = /\u591c\u73ed|\u901a\u5bb5/u.test(shiftValue);
+  const stageGross = (stage: CompensationStage) => stage.fixed + scheduledDays * (stage.mealPerDay + (overnightSchedule ? stage.overnightNight : 0));
+  const probationGross = probationStage ? stageGross(probationStage) : 0;
+  const regularGross = regularStage ? stageGross(regularStage) : 0;
+  const grossStages = [probationStage ? `\u8bd5\u7528\u671f\u7a0e\u524d\u7ea6 ${Math.round(probationGross)} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u540e\u7a0e\u524d\u7ea6 ${Math.round(regularGross)} \u5143/\u6708` : ""].filter(Boolean);
+  fields.estimatedGross = { value: grossStages.length ? `${grossStages.join("\uff1b")}\uff08\u6309${scheduledDays || "\u672a\u77e5"}\u4e2a\u5de5\u4f5c\u65e5/\u6708\u3001\u9910\u8865\u4e0e\u901a\u5bb5\u73ed\u8865\u8d34\u8ba1\u5165\uff09` : WORDS.missing, state: grossStages.length && scheduledDays ? "unclear" : "missing" };
+  const takeHomeStages = socialValue && CITY_REFERENCE[locationValue] ? [probationStage ? `\u8bd5\u7528\u671f\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, probationGross, withHousingFund)}` : "", regularStage ? `\u8f6c\u6b63\u540e\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, regularGross, withHousingFund)}` : ""].filter(Boolean) : [];
   fields.estimatedTakeHome = { value: takeHomeStages.length ? takeHomeStages.join("\uff1b") : WORDS.missing, state: takeHomeStages.length ? "unclear" : "missing" };
 
   if (!salaryFound) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u7f3a\u5c11\u660e\u786e\u7684\u85aa\u8d44\u8303\u56f4", level: "high", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u6708\u85aa\u3001\u5e74\u85aa\u6216\u85aa\u8d44\u533a\u95f4\u3002", suggestion: "\u786e\u8ba4\u6708\u85aa/\u5e74\u85aa\u8303\u56f4\u3001\u56fa\u5b9a\u85aa\u8d44\u3001\u7ee9\u6548\u63d0\u6210\u548c\u8bd5\u7528\u671f\u85aa\u8d44\u3002" });
