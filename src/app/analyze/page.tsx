@@ -18,12 +18,23 @@ interface Finding {
   suggestion: string;
 }
 
+interface CityReference {
+  city: string;
+  monthlyIncome: number;
+  salaryFloor: number;
+  ratio: number;
+  score: number;
+  level: string;
+  referenceYear: number;
+}
+
 interface AnalysisResult {
   riskScore: number;
   summary: string;
   fields: Record<string, { value: string; state: "found" | "missing" | "unclear" }>;
   findings: Finding[];
   strengths: string[];
+  cityReference?: CityReference;
 }
 
 interface ArchiveItem {
@@ -312,6 +323,7 @@ export default function AnalyzePage() {
 
         <aside className="space-y-5">
           {result ? <section className="border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)]"><div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Analysis result</p><h2 className="mt-2 text-lg font-bold text-slate-950">风险概览</h2></div><div className={`border px-3 py-2 text-center ${scoreStyle(result.riskScore)}`}><div className="text-2xl font-bold">{result.riskScore}</div><div className="text-[10px] font-bold">完整度</div></div></div><p className="mt-4 text-sm leading-6 text-slate-600">{result.summary}</p>{result.strengths.length > 0 ? <div className="mt-4 border-t border-slate-100 pt-4"><p className="text-xs font-bold text-emerald-700">已识别的正向信息</p><div className="mt-2 flex flex-wrap gap-2">{result.strengths.map((item) => <span key={item} className="bg-emerald-50 px-2 py-1 text-xs text-emerald-700">{item}</span>)}</div></div> : null}</section> : <section className="border-2 border-slate-200 bg-slate-50 p-5"><h2 className="text-lg font-bold text-slate-950">你会得到什么</h2><div className="mt-4 space-y-3 text-sm leading-6 text-slate-600"><p><b className="text-slate-950">字段检查：</b>薪资、地点、职责、福利、工时、用工类型。</p><p><b className="text-slate-950">风险提醒：</b>面议、纯提成、职责泛化、加班制度缺失等。</p><p><b className="text-slate-950">横向比较：</b>从存档中选择最多 4 个职位，放在同一张表里比较。</p></div></section>}
+          {result?.cityReference ? <section className="border-2 border-cyan-200 bg-cyan-50/40 p-5"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">City purchasing power</p><h2 className="mt-2 text-base font-bold text-slate-950">{result.cityReference.city} 城市购买力</h2></div><span className="border border-cyan-200 bg-white px-2 py-1 text-sm font-bold text-cyan-800">{result.cityReference.score}/20</span></div><p className="mt-3 text-sm font-semibold text-slate-900">{result.cityReference.level}</p><p className="mt-2 text-xs leading-5 text-slate-600">固定月薪下限 {result.cityReference.salaryFloor} 元，约为 {result.cityReference.referenceYear} 年城市月度生活参考 {result.cityReference.monthlyIncome} 元的 {Math.round(result.cityReference.ratio * 100)}%。不含房租、家庭负担和补贴。</p></section> : null}
           {result ? <section className="border-2 border-slate-200 bg-white p-5"><h2 className="text-base font-bold text-slate-950">招聘信息明细</h2><p className="mt-1 text-xs text-slate-400">绿色为原文已确认，黄色为根据原文推算或仍需核实。</p><div className="mt-3 space-y-2">{Object.keys(fieldLabels).filter((key) => (result.fields[key]?.state || "missing") !== "missing").map((key) => { const field = result.fields[key]; return <div key={key} className="flex items-start justify-between gap-3 border-b border-slate-100 py-2 text-sm"><span className="w-28 shrink-0 text-slate-600">{fieldLabels[key]}</span><span className={"min-w-0 break-words text-right " + (field.state === "found" ? "font-semibold text-emerald-700" : "font-semibold text-amber-700")}>{field.value}</span></div>; })}</div>{(() => { const missing = Object.keys(fieldLabels).filter((key) => (result.fields[key]?.state || "missing") === "missing"); return missing.length ? <div className="mt-4 border-t border-slate-100 pt-3"><p className="text-xs font-bold text-slate-500">仍需确认（{missing.length} 项）</p><div className="mt-2 flex flex-wrap gap-1.5">{missing.map((key) => <span key={key} className="border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500">{fieldLabels[key]}</span>)}</div></div> : null; })()}</section> : null}
         </aside>
       </main>

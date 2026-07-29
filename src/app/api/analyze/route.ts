@@ -13,12 +13,23 @@ interface Finding {
   suggestion: string;
 }
 
+interface CityReference {
+  city: string;
+  monthlyIncome: number;
+  salaryFloor: number;
+  ratio: number;
+  score: number;
+  level: string;
+  referenceYear: number;
+}
+
 interface AnalysisResult {
   riskScore: number;
   summary: string;
   fields: Record<string, { value: string; state: FieldState }>;
   findings: Finding[];
   strengths: string[];
+  cityReference?: CityReference;
   aiEnhanced?: boolean;
 }
 
@@ -33,6 +44,22 @@ const WORDS = {
   benefits: "\u798f\u5229\u5f85\u9047",
   employment: "\u7528\u5de5\u7c7b\u578b",
   process: "\u62db\u8058\u6d41\u7a0b",
+};
+
+// Monthly urban disposable-income reference, rounded from each city's 2024 public statistical bulletin.
+// It is a purchasing-power reference, not a wage standard or a personal rent estimate.
+const CITY_REFERENCE: Record<string, { monthlyIncome: number; referenceYear: number }> = {
+  "\u5317\u4eac": { monthlyIncome: 7850, referenceYear: 2024 },
+  "\u4e0a\u6d77": { monthlyIncome: 7750, referenceYear: 2024 },
+  "\u5e7f\u5dde": { monthlyIncome: 6900, referenceYear: 2024 },
+  "\u6df1\u5733": { monthlyIncome: 6800, referenceYear: 2024 },
+  "\u676d\u5dde": { monthlyIncome: 7000, referenceYear: 2024 },
+  "\u5357\u4eac": { monthlyIncome: 6200, referenceYear: 2024 },
+  "\u82cf\u5dde": { monthlyIncome: 6000, referenceYear: 2024 },
+  "\u6210\u90fd": { monthlyIncome: 4700, referenceYear: 2024 },
+  "\u6b66\u6c49": { monthlyIncome: 4700, referenceYear: 2024 },
+  "\u91cd\u5e86": { monthlyIncome: 4000, referenceYear: 2024 },
+  "\u897f\u5b89": { monthlyIncome: 4000, referenceYear: 2024 },
 };
 
 function getUserId(request: NextRequest) {
@@ -76,6 +103,33 @@ function timeToHours(value: string) {
   return Number(hours) + Number(minutes) / 60;
 }
 
+function amountToYuan(value: string, unit = "") {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  if (/^[kK]$/u.test(unit)) return amount * 1000;
+  if (unit === "\u4e07") return amount * 10000;
+  if (unit === "\u5343") return amount * 1000;
+  return amount;
+}
+
+function monthlySalaryFloor(value: string) {
+  if (!value || /\u5e74\u85aa|\/\s*\u5e74/u.test(value)) return 0;
+  const range = value.match(/(\d+(?:\.\d+)?)\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*([kK]|\u4e07|\u5343|\u5143)/u);
+  if (range) return amountToYuan(range[1], range[2]);
+  const amount = value.match(/(\d+(?:\.\d+)?)\s*([kK]|\u4e07|\u5343|\u5143)?/u);
+  return amount ? amountToYuan(amount[1], amount[2]) : 0;
+}
+
+function cityReference(city: string, salary: string): CityReference | undefined {
+  const benchmark = CITY_REFERENCE[city];
+  const salaryFloor = monthlySalaryFloor(salary);
+  if (!benchmark || !salaryFloor) return undefined;
+  const ratio = Math.round(salaryFloor / benchmark.monthlyIncome * 100) / 100;
+  const score = ratio >= 1.5 ? 20 : ratio >= 1.2 ? 16 : ratio >= 0.95 ? 12 : ratio >= 0.75 ? 7 : 3;
+  const level = ratio >= 1.5 ? "\u663e\u8457\u9ad8\u4e8e\u57ce\u5e02\u751f\u6d3b\u53c2\u8003" : ratio >= 1.2 ? "\u9ad8\u4e8e\u57ce\u5e02\u751f\u6d3b\u53c2\u8003" : ratio >= 0.95 ? "\u63a5\u8fd1\u57ce\u5e02\u751f\u6d3b\u53c2\u8003" : ratio >= 0.75 ? "\u4f4e\u4e8e\u57ce\u5e02\u751f\u6d3b\u53c2\u8003" : "\u660e\u663e\u4f4e\u4e8e\u57ce\u5e02\u751f\u6d3b\u53c2\u8003";
+  return { city, monthlyIncome: benchmark.monthlyIncome, salaryFloor, ratio, score, level, referenceYear: benchmark.referenceYear };
+}
+
 function analyzeText(rawText: string, companyName?: string | null): AnalysisResult {
   const text = rawText.replace(/\s+/g, " ").trim();
   const findings: Finding[] = [];
@@ -94,6 +148,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   // Do not treat a bare \"工作地点\" label as a location: OCR text often has no line breaks.
   const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u);
   fields.location = { value: locationValue || WORDS.missing, state: locationValue ? "found" : "missing" };
+  const cityLiving = cityReference(locationValue, salaryNumber);
 
   const dutyPattern = /\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u5185\u5bb9|\u4e3b\u8981\u8d1f\u8d23|\u804c\u8d23\u63cf\u8ff0|\u65e5\u5e38\u5de5\u4f5c|\u8d1f\u8d23/u;
   const nextFieldPattern = /\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u53cc\u4f11|\u5355\u4f11|\u5012\u73ed|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669/u;
@@ -204,6 +259,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   if (!employmentValue) findings.push({ category: "\u7528\u5de5\u5173\u7cfb", item: "\u7528\u5de5\u7c7b\u578b\u4e0d\u6e05\u6670", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u5168\u804c\u3001\u5b9e\u4e60\u3001\u5916\u5305\u6216\u5408\u540c\u7c7b\u578b\u3002", suggestion: "\u786e\u8ba4\u52b3\u52a8\u5408\u540c\u4e3b\u4f53\u3001\u7528\u5de5\u7c7b\u578b\u3001\u8bd5\u7528\u671f\u548c\u8f6c\u6b63\u6761\u4ef6\u3002" });
   if (!processValue) findings.push({ category: "\u62db\u8058\u6d41\u7a0b", item: "\u62db\u8058\u6d41\u7a0b\u4e0d\u900f\u660e", level: "low", evidence: "\u6ca1\u6709\u8bc6\u522b\u5230\u9762\u8bd5\u8f6e\u6b21\u3001\u7b14\u8bd5\u6216\u8bd5\u7528\u671f\u4fe1\u606f\u3002", suggestion: "\u786e\u8ba4\u9762\u8bd5\u8f6e\u6b21\u3001\u51b3\u7b56\u4eba\u3001\u53cd\u9988\u65f6\u95f4\u548c\u8bd5\u7528\u671f\u8003\u6838\u3002" });
   if (has(text, /\u65e0\u8d23\u5e95\u85aa|\u7eaf\u63d0\u6210|\u9ad8\u63d0\u6210/u) && !salaryNumber) findings.push({ category: "\u85aa\u8d44\u900f\u660e\u5ea6", item: "\u53ef\u80fd\u5b58\u5728\u6536\u5165\u7ed3\u6784\u98ce\u9669", level: "high", evidence: "\u51fa\u73b0\u65e0\u8d23\u5e95\u85aa\u3001\u7eaf\u63d0\u6210\u6216\u9ad8\u63d0\u6210\uff0c\u4f46\u672a\u7ed9\u51fa\u91d1\u989d\u3002", suggestion: "\u8981\u6c42\u4e66\u9762\u786e\u8ba4\u56fa\u5b9a\u85aa\u8d44\u3001\u63d0\u6210\u53e3\u5f84\u3001\u53d1\u653e\u6761\u4ef6\u548c\u5386\u53f2\u8fbe\u6210\u7387\u3002" });
+  if (cityLiving && cityLiving.ratio < 0.95) findings.push({ category: "\u57ce\u5e02\u8d2d\u4e70\u529b", item: "\u85aa\u8d44\u4f4e\u4e8e\u57ce\u5e02\u751f\u6d3b\u53c2\u8003", level: cityLiving.ratio < 0.75 ? "high" : "medium", evidence: `${cityLiving.city}\u5b9a\u8d44\u4e0b\u9650\u7ea6 ${cityLiving.salaryFloor} \u5143/\u6708\uff0c\u4e3a ${cityLiving.referenceYear} \u5e74\u57ce\u9547\u5c45\u6c11\u6708\u5ea6\u751f\u6d3b\u53c2\u8003\u7684 ${Math.round(cityLiving.ratio * 100)}%\u3002`, suggestion: "\u7ed3\u5408\u623f\u79df\u3001\u901a\u52e4\u3001\u662f\u5426\u63d0\u4f9b\u4f4f\u5bbf/\u623f\u8865\u3001\u8bd5\u7528\u671f\u5de5\u8d44\u548c\u5bb6\u5ead\u8d1f\u62c5\u518d\u5224\u65ad\u3002" });
 
   const strengths: string[] = [];
   if (weeklyHoursDirect) strengths.push("\u5468\u5de5\u65f6\uff1a" + weeklyHoursDirect);
@@ -214,11 +270,12 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   if (dutyFound && !dutyVague) strengths.push("\u5c97\u4f4d\u804c\u8d23\u6709\u5177\u4f53\u63cf\u8ff0");
   if (locationValue) strengths.push(`\u5730\u70b9\uff1a${locationValue}`);
   if (benefitsValue) strengths.push(`\u798f\u5229\uff1a${benefitsValue}`);
+  if (cityLiving && cityLiving.ratio >= 1.2) strengths.push(`\u57ce\u5e02\u8d2d\u4e70\u529b\uff1a${cityLiving.level}`);
 
   const riskScore = Math.max(0, Math.min(100, 100 - findings.reduce((total, item) => total + (item.level === "high" ? 20 : item.level === "medium" ? 12 : 6), 0)));
   const company = companyName ? `“${companyName}”` : "\u8fd9\u6761\u62db\u8058\u4fe1\u606f";
   const summary = riskScore >= 80 ? `${company}\u4fe1\u606f\u76f8\u5bf9\u5b8c\u6574\uff0c\u4f46\u4ecd\u5efa\u8bae\u5728\u6c9f\u901a\u65f6\u6838\u5b9e\u5173\u952e\u6761\u4ef6\u3002` : riskScore >= 55 ? `${company}\u5b58\u5728\u82e5\u5e72\u9700\u8981\u8865\u5145\u786e\u8ba4\u7684\u6761\u4ef6\uff0c\u5efa\u8bae\u4e0d\u8981\u53ea\u51ed\u622a\u56fe\u505a\u51b3\u5b9a\u3002` : `${company}\u5173\u952e\u5b57\u6bb5\u7f3a\u53e3\u8f83\u591a\uff0c\u5efa\u8bae\u5148\u8865\u9f50\u85aa\u8d44\u3001\u804c\u8d23\u548c\u7528\u5de5\u6761\u4ef6\uff0c\u518d\u51b3\u5b9a\u662f\u5426\u63a8\u8fdb\u3002`;
-  return { riskScore, summary, fields, findings, strengths };
+  return { riskScore, summary, fields, findings, strengths, cityReference: cityLiving };
 }
 
 function normalizedForSourceCheck(value: string) {
