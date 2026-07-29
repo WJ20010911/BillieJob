@@ -90,18 +90,19 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.salary = { value: salaryRangeValue, state: salaryNumber ? (salaryHasPeriod ? "found" : "unclear") : salaryUnclear ? "unclear" : "missing" };
   fields.salaryRange = { value: salaryRangeValue, state: fields.salary.state };
 
-  const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u) || snippet(text, /\u5de5\u4f5c\u5730\u70b9|\u5de5\u4f5c\u5730|\u529e\u516c\u5730\u70b9|\u5730\u5740/u, 60);
+  // Do not treat a bare \"工作地点\" label as a location: OCR text often has no line breaks.
+  const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u);
   fields.location = { value: locationValue || WORDS.missing, state: locationValue ? "found" : "missing" };
 
   const dutyPattern = /\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u5185\u5bb9|\u4e3b\u8981\u8d1f\u8d23|\u804c\u8d23\u63cf\u8ff0|\u65e5\u5e38\u5de5\u4f5c|\u8d1f\u8d23/u;
-  const nextFieldPattern = /\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669/u;
-  const dutyValue = labeledValue(text, dutyPattern, nextFieldPattern) || snippet(text, dutyPattern);
+  const nextFieldPattern = /\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u53cc\u4f11|\u5355\u4f11|\u5012\u73ed|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669/u;
+  const dutyValue = (labeledValue(text, dutyPattern, nextFieldPattern) || snippet(text, dutyPattern)).replace(/^(?:\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23)\s*/u, "");
   const dutyFound = Boolean(dutyValue);
   const dutyVague = text.length < 100 || has(text, /\u5176\u4ed6\u4e34\u65f6\u5b89\u6392|\u5b8c\u6210\u9886\u5bfc\u4ea4\u529e|\u670d\u4ece\u5b89\u6392|\u5de5\u4f5c\u5185\u5bb9\u4e0d\u9650|\u534f\u52a9\u5176\u4ed6\u5de5\u4f5c/u);
   fields.duties = { value: dutyValue || WORDS.missing, state: dutyFound ? (dutyVague ? "unclear" : "found") : "missing" };
 
   const requirementPattern = /\u4efb\u804c\u8981\u6c42|\u4efb\u804c\u8d44\u683c|\u5c97\u4f4d\u8981\u6c42|\u5b66\u5386|\u7ecf\u9a8c\u8981\u6c42|\u6280\u80fd\u8981\u6c42/u;
-  const requirementsValue = labeledValue(text, requirementPattern, /\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669|\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u5012\u73ed|\u4efb\u52a1\u8981\u6c42/u) || firstMatch(text, requirementPattern);
+  const requirementsValue = (labeledValue(text, requirementPattern, /\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669|\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u5012\u73ed|\u4efb\u52a1\u8981\u6c42/u) || firstMatch(text, requirementPattern)).replace(/^(?:\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42)\s*/u, "");
   fields.requirements = { value: requirementsValue || WORDS.missing, state: requirementsValue ? "found" : "missing" };
 
   const workTimePattern = /\d{1,2}(?::\d{2})?\s*[-~\u81f3\u5230]\s*\d{1,2}(?::\d{2})?|\u671d\u4e5d\u665a\u516d|\u65e9\u4e5d\u665a\u516d|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u73ed\u6b21/u;
@@ -122,7 +123,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.dailyHours = { value: dailyHoursValue || inferredDailyHours || WORDS.missing, state: dailyHoursValue ? "found" : inferredDailyHours ? "unclear" : "missing" };
   const weeklyHoursDirect = firstMatch(text, /(?:\u6bcf\u5468|\u5468\u5de5)\s*\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)|\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)\s*\/\s*(?:\u5468|\u5468\u5de5)/iu);
   const weeklyDaysMatch = text.match(/(?:\u6bcf\u5468\s*)?(\d+)\s*\u5929(?:\u5de5\u4f5c)?/u);
-  const weeklyDaysValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u505a\u516d\u4f11\u4e00|\u6bcf\u5468\s*[\u4e00-\u9fa5\d]+\s*(?:\u5929|\u65e5)/u);
+  const weeklyDaysValue = firstMatch(text, /\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u505a\u516d\u4f11\u4e00|\u6bcf\u5468\s*(?:[1-7]|[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u4e24])\s*(?:\u5929|\u65e5)/u);
   const dailyHours = dailyHoursMatch ? Number(dailyHoursMatch[1] || dailyHoursMatch[2]) : workTimeMatch ? Number(inferredDailyHours.match(/\d+(?:\.\d+)?/u)?.[0] || 0) : 0;
   const weeklyDays = weeklyDaysMatch ? Number(weeklyDaysMatch[1]) : weeklyDaysValue === "\u53cc\u4f11" ? 5 : weeklyDaysValue === "\u5355\u4f11" ? 6 : 0;
   const weeklyHoursValue = weeklyHoursDirect || (dailyHours && weeklyDays ? "\u7ea6 " + dailyHours * weeklyDays + " \u5c0f\u65f6/\u5468\uff08\u6309\u6bcf\u65e5\u65f6\u95f4\u4e0e\u4f11\u606f\u65e5\u63a8\u7b97\uff0c\u4f11\u606f\u65f6\u95f4\u672a\u8bf4\u660e\uff09" : "");
@@ -130,17 +131,17 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.weeklyWorkDays = { value: weeklyDaysValue || (weeklyDaysMatch ? "\u6bcf\u5468 " + weeklyDaysMatch[1] + " \u5929" : WORDS.missing), state: weeklyDaysValue || weeklyDaysMatch ? "found" : "missing" };
   const shiftValue = firstMatch(text, /(?:\u4f1a|\u9700\u8981|\u53ef\u80fd)?\s*(?:\u6d89\u53ca)?(?:\u5012\u73ed|\u8f6e\u73ed|\u6392\u73ed|\u4e24\u73ed\u5012|\u4e09\u73ed\u5012|\u65e9\u665a\u73ed|\u767d\u591c\u73ed|\u591c\u73ed|\u4e0d\u5012\u73ed|\u65e0\u591c\u73ed)/u);
   fields.shiftWork = { value: shiftValue || WORDS.missing, state: shiftValue ? "found" : "missing" };
-  const overtimePattern = /\u52a0\u73ed[^\u3002\uff1b;.\uff01\uff1f]{0,50}|\u4e0d\u52a0\u73ed|\u65e0\u52a0\u73ed|\u8c03\u4f11|\u52a0\u73ed\u8d39|\u52a0\u73ed\u9891\u7387/u;
+  const overtimePattern = /\u4e0d\u52a0\u73ed|\u65e0\u52a0\u73ed|\u5e38\u6001\u52a0\u73ed|\u8c03\u4f11|\u52a0\u73ed\u8d39|\u52a0\u73ed\u9891\u7387/u;
   const overtimeValue = firstMatch(text, overtimePattern);
   fields.overtimePolicy = { value: overtimeValue || WORDS.missing, state: overtimeValue ? "found" : "missing" };
 
-  const benefitsValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1|\u5e26\u85aa|\u798f\u5229|\u8865\u8d34|\u5e74\u7ec8\u5956|\u9910\u8865|\u623f\u8865/u);
+  const benefitsValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1|\u5e26\u85aa\u5e74\u5047|\u5e74\u7ec8\u5956|\u9910\u8865|\u623f\u8865|\u8f66\u8865/u);
   fields.benefits = { value: benefitsValue || WORDS.missing, state: benefitsValue ? "found" : "missing" };
 
   const employmentValue = firstMatch(text, /\u5168\u804c|\u517c\u804c|\u5b9e\u4e60|\u52b3\u52a1|\u52b3\u52a8\u5408\u540c|\u6b63\u5f0f|\u793e\u62db|\u6821\u62db|\u5916\u5305/u);
   fields.employment = { value: employmentValue || WORDS.missing, state: employmentValue ? "found" : "missing" };
 
-  const processValue = firstMatch(text, /\u9762\u8bd5|\u7b14\u8bd5|\u62db\u8058\u6d41\u7a0b|\u51e0\u8f6e|\u5165\u804c\u6d41\u7a0b|\u8bd5\u7528\u671f/u);
+  const processValue = firstMatch(text, /\u9762\u8bd5|\u7b14\u8bd5|\d+\s*\u8f6e\u9762\u8bd5|\u5165\u804c\u65f6\u95f4|\u8bd5\u7528\u671f/u);
   fields.process = { value: processValue || WORDS.missing, state: processValue ? "found" : "missing" };
 
   const allowancePattern = /\u8865\u8d34|\u8865\u52a9/u;
@@ -158,13 +159,18 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const taskRequirementValue = firstMatch(text, /\u6ca1\u6709\u4efb\u52a1\u8981\u6c42|\u65e0\u4efb\u52a1\u8981\u6c42|\u4e0d\u8bbe\u4efb\u52a1|\u65e0\u4e1a\u7ee9\u8981\u6c42|\u4e0d\u8003\u6838|\u4efb\u52a1\u6307\u6807[^\u3002\uff1b;.!?\uff01\uff1f]{0,40}/u);
   fields.taskRequirement = { value: taskRequirementValue || WORDS.missing, state: taskRequirementValue ? "found" : "missing" };
 
-  const monthlyAllowanceValue = snippet(text, /\u6bcf\u6708[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u6708\u8865\u8d34|\u6708\u5ea6\u8865\u8d34/u, 70);
-  const dailyAllowanceValue = snippet(text, /\u6bcf\u5929[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u6bcf\u65e5[^\u3002\uff1b;.\uff01\uff1f]{0,40}(?:\u8865\u8d34|\u8865\u52a9)|\u65e5\u8865\u8d34/u, 70);
-  const mealValue = snippet(text, /\u9910\u8865|\u996d\u8865|\u9965\u98df\u8865\u8d34|\u9910\u8d39\u8865\u8d34/u, 70);
-  const transportValue = snippet(text, /\u4ea4\u901a\u8865\u8d34|\u8f66\u8865|\u4ea4\u901a\u8d39|\u8f66\u8d39\u8865\u8d34/u, 70);
-  const housingValue = snippet(text, /\u623f\u8865|\u4f4f\u623f\u8865\u8d34|\u4f4f\u5bbf\u8865\u8d34/u, 70);
-  const bonusValue = snippet(text, /\u5e74\u7ec8\u5956|\u5e74\u5ea6\u5956\u91d1|\u5341\u4e09\u85aa|\u5341\u56db\u85aa/u, 70);
-  const socialValue = snippet(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1/u, 70);
+  const monthlyAllowanceAmount = capture(text, /(?:\u6bcf\u6708|\u6bcf\u4e2a\u6708|\u6708\u5ea6)\s*(?:\u8865\u8d34|\u8865\u52a9)?[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u) || capture(text, /([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)\s*(?:\/\s*\u6708)?\s*(?:\u6708\u8865\u8d34|\u6708\u5ea6\u8865\u8d34|\u6bcf\u6708\u8865\u8d34)/u);
+  const dailyAllowanceAmount = capture(text, /(?:\u6bcf\u5929|\u6bcf\u65e5|\u65e5)\s*(?:\u8865\u8d34|\u8865\u52a9)?[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u) || capture(text, /([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)\s*(?:\/\s*\u5929)?\s*(?:\u65e5\u8865\u8d34|\u6bcf\u65e5\u8865\u8d34|\u6bcf\u5929\u8865\u8d34)/u);
+  const mealAmount = capture(text, /(?:\u9910\u8865|\u996d\u8865|\u9965\u98df\u8865\u8d34|\u9910\u8d39\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
+  const transportAmount = capture(text, /(?:\u4ea4\u901a\u8865\u8d34|\u8f66\u8865|\u4ea4\u901a\u8d39|\u8f66\u8d39\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
+  const housingAmount = capture(text, /(?:\u623f\u8865|\u4f4f\u623f\u8865\u8d34|\u4f4f\u5bbf\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
+  const monthlyAllowanceValue = monthlyAllowanceAmount ? `每月补贴 ${amountWithUnit(monthlyAllowanceAmount)}` : "";
+  const dailyAllowanceValue = dailyAllowanceAmount ? `每天补贴 ${amountWithUnit(dailyAllowanceAmount)}` : "";
+  const mealValue = mealAmount ? `食补 ${amountWithUnit(mealAmount)}` : "";
+  const transportValue = transportAmount ? `交通补贴 ${amountWithUnit(transportAmount)}` : "";
+  const housingValue = housingAmount ? `房补 ${amountWithUnit(housingAmount)}` : "";
+  const bonusValue = firstMatch(text, /\u5e74\u7ec8\u5956|\u5e74\u5ea6\u5956\u91d1|\u5341\u4e09\u85aa|\u5341\u56db\u85aa/u);
+  const socialValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1/u);
   fields.monthlyAllowance = { value: monthlyAllowanceValue || WORDS.missing, state: monthlyAllowanceValue ? "found" : "missing" };
   fields.dailyAllowance = { value: dailyAllowanceValue || WORDS.missing, state: dailyAllowanceValue ? "found" : "missing" };
   fields.mealAllowance = { value: mealValue || WORDS.missing, state: mealValue ? "found" : "missing" };
@@ -212,12 +218,19 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   return { riskScore, summary, fields, findings, strengths };
 }
 
-function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput): AnalysisResult {
+function normalizedForSourceCheck(value: string) {
+  return value.replace(/[\s\u3000,，.。;；:：()（）\[\]【】"'“”‘’]/gu, "");
+}
+
+function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput, rawText: string): AnalysisResult {
   const fields = { ...base.fields };
+  const source = normalizedForSourceCheck(rawText);
   for (const key of Object.keys(fields)) {
     const candidate = ai.fields?.[key];
     const value = typeof candidate?.value === "string" ? candidate.value.trim() : "";
-    if (!value || value === "NOT_MENTIONED" || value.length > 180) continue;
+    // The model is allowed to fill a missing field only with a source quote.
+    // This prevents a bare OCR label from turning into a long made-up value.
+    if (!value || value === "NOT_MENTIONED" || value.includes(WORDS.missing) || value.length > 180 || !source.includes(normalizedForSourceCheck(value))) continue;
     const state = candidate?.state === "unclear" || candidate?.state === "missing" ? candidate.state : "found";
     if (fields[key].state !== "missing") continue;
     if (state !== "missing") fields[key] = { value, state };
@@ -281,7 +294,7 @@ export async function POST(request: NextRequest) {
     try {
       const aiResult = await callJobAnalysisAI(rawText);
       if (aiResult) {
-        result = mergeAIResult(deterministicResult, aiResult);
+        result = mergeAIResult(deterministicResult, aiResult, rawText);
         aiUsed = true;
       }
     } catch (error) {
