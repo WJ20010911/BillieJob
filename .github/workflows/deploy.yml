@@ -25,6 +25,9 @@ jobs:
           script: |
             set -e
             cd /var/www/BillieJob
+            # Next.js updates this generated declaration during builds; it must
+            # not prevent a later fast-forward deployment.
+            git restore next-env.d.ts
             git pull --ff-only origin main
             npm ci
             npx prisma generate
