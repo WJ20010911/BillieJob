@@ -81,6 +81,17 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric" }).format(new Date(value));
 }
 
+function extractJobMeta(ocrText: string) {
+  const lines = ocrText.split(/\r?\n/u).map((line) => line.replace(/\s+/gu, " ").trim()).filter(Boolean);
+  const detailIndex = lines.findIndex((line) => /职位详情|岗位详情|职位描述/u.test(line));
+  const beforeDetail = detailIndex >= 0 ? lines.slice(0, detailIndex) : lines.slice(0, 12);
+  const companyLine = beforeDetail.find((line) => /(?:[•·]|\s)(?:hr|HR|招聘者|人事)$/u.test(line));
+  const companyName = companyLine?.replace(/(?:[•·]|\s)+(?:hr|HR|招聘者|人事)$/u, "").trim() || "";
+  const titleLine = beforeDetail.find((line) => /客服|工程师|设计师|运营|销售|专员|助理|经理|顾问|老师|开发|产品|会计|行政|主播|编辑/u.test(line) && !/职位详情|工作内容|任职要求/u.test(line));
+  const title = titleLine?.replace(/\s*[（(].*$/u, "").replace(/\s*[-—]\s*$/u, "").trim() || "";
+  return { title, companyName };
+}
+
 export default function AnalyzePage() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -172,7 +183,10 @@ export default function AnalyzePage() {
       const text = String(data.text || "").trim();
       if (!text) throw new Error("没有识别到文字");
       setRawText(text);
-      setMessage("截图文字已识别，请校对后开始分析。");
+      const meta = extractJobMeta(text);
+      if (meta.title) setTitle((previous) => previous.trim() || meta.title);
+      if (meta.companyName) setCompanyName((previous) => previous.trim() || meta.companyName);
+      setMessage(meta.title || meta.companyName ? "截图文字已识别，已自动填写职位和公司，请校对后开始分析。" : "截图文字已识别，请校对后开始分析。");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "OCR 请求失败";
       const friendly = detail === "Failed to fetch" ? "无法连接到网站服务器，OCR 请求未能发出" : detail;
