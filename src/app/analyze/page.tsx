@@ -161,14 +161,22 @@ export default function AnalyzePage() {
       const formData = new FormData();
       formData.append("file", imageFile);
       const response = await fetch("/api/analyze/ocr", { method: "POST", body: formData });
-      const data = await response.json();
+      const body = await response.text();
+      let data: { text?: string; error?: string } = {};
+      try {
+        data = JSON.parse(body) as { text?: string; error?: string };
+      } catch {
+        throw new Error(response.ok ? "OCR 服务返回了无法识别的内容" : `OCR 请求失败（HTTP ${response.status}）`);
+      }
       if (!response.ok) throw new Error(data.error || "OCR request failed");
       const text = String(data.text || "").trim();
       if (!text) throw new Error("没有识别到文字");
       setRawText(text);
       setMessage("截图文字已识别，请校对后开始分析。");
     } catch (error) {
-      setMessage(error instanceof Error ? `${error.message}，也可以手动粘贴截图文字。` : "OCR 失败，请手动粘贴截图文字。");
+      const detail = error instanceof Error ? error.message : "OCR 请求失败";
+      const friendly = detail === "Failed to fetch" ? "无法连接到网站服务器，OCR 请求未能发出" : detail;
+      setMessage(`${friendly}。你仍可直接在下方“招聘原文”粘贴文字后开始分析。`);
     } finally {
       setOcrLoading(false);
     }

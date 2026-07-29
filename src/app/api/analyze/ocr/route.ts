@@ -15,28 +15,41 @@ export async function POST(request: NextRequest) {
     const aiConfig = await getAIConfig();
     const provider = aiConfig?.provider.toLowerCase() || "";
     const isZhipu = provider.includes("zhipu") || provider.includes("智谱") || aiConfig?.endpoint.includes("bigmodel.cn");
+    let zhipuFailure = "";
     if (aiConfig?.enabled && isZhipu && aiConfig.apiKey) {
       try {
-        const text = await callZhipuFileParser(file, aiConfig.apiKey);
+        const text = await callZhipuFileParser(file, aiConfig.apiKey, 25000);
         if (text) return NextResponse.json({ text, provider: "zhipu" });
       } catch (error) {
         console.warn("Zhipu file parser failed, falling back to OCR.space:", error);
+        zhipuFailure = error instanceof Error ? error.message : "智谱文件解析失败";
       }
     }
 
     const apiKey = await getOCRApiKey();
-    if (!apiKey) return NextResponse.json({ error: "请在管理员配置中填写 OCR.space 密钥，或启用智谱 AI 文件解析。" }, { status: 503 });
+    if (!apiKey) return NextResponse.json({ error: zhipuFailure ? `智谱识别失败：${zhipuFailure}。未配置 OCR.space 备用密钥。` : "请在管理员配置中填写 OCR.space 密钥，或启用智谱 AI 文件解析。" }, { status: 503 });
 
     const payload = new FormData();
     payload.append("file", file, file.name);
     payload.append("language", "chs");
     payload.append("isOverlayRequired", "false");
     payload.append("OCREngine", "2");
-    const response = await fetch("https://api.ocr.space/parse/image", {
-      method: "POST",
-      headers: { apikey: apiKey },
-      body: payload,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+    let response: Response;
+    try {
+      response = await fetch("https://api.ocr.space/parse/image", {
+        method: "POST",
+        headers: { apikey: apiKey },
+        body: payload,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const detail = error instanceof Error && error.name === "AbortError" ? "OCR.space 响应超时" : "无法连接 OCR.space";
+      return NextResponse.json({ error: zhipuFailure ? `智谱识别失败，且${detail}` : detail }, { status: 502 });
+    } finally {
+      clearTimeout(timeout);
+    }
     const data = await response.json() as {
       IsErroredOnProcessing?: boolean;
       ErrorMessage?: string | string[];

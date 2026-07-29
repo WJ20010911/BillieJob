@@ -190,9 +190,9 @@ async function parseZhipuResponse(response: Response) {
   return payload;
 }
 
-export async function callZhipuFileParser(file: File, apiKey: string) {
+export async function callZhipuFileParser(file: File, apiKey: string, timeoutMs = 50000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 50000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const upload = async (endpoint: string) => {
     const form = new FormData();
     form.append("file", file, file.name || "recruitment-file");
