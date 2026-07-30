@@ -248,7 +248,7 @@ export default function AccountPage() {
 
         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white px-5 py-2 shadow-[0_18px_48px_rgba(15,23,42,0.05)] sm:px-7">
           {loading ? <div className="py-16 text-center text-sm text-slate-400">正在加载...</div> : null}
-          {false ? (
+          {!loading && data && false ? (
             <div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-5">
                 <div><h2 className="text-lg font-semibold text-slate-950">系统通知</h2><p className="mt-1 text-xs text-slate-400">未读 {unread} 条</p></div>
