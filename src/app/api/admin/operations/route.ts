@@ -20,7 +20,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ companies });
   }
   if (kind === "codes") {
-    const codes = await prisma.redemptionCode.findMany({ orderBy: { createdAt: "desc" }, take: 200, include: { _count: { select: { uses: true } } } });
+    const codes = await prisma.redemptionCode.findMany({
+      where: query ? { code: { contains: query.toUpperCase() } } : undefined,
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        uses: { orderBy: { createdAt: "desc" }, select: { createdAt: true, user: { select: { identifier: true, nickname: true } } } },
+        _count: { select: { uses: true } },
+      },
+    });
     return NextResponse.json({ codes });
   }
   return NextResponse.json({ error: "无效请求" }, { status: 400 });

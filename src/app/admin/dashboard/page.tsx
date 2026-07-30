@@ -28,7 +28,7 @@ interface AIConfig {
 interface ManagedUser { id: number; identifier: string; nickname: string | null; membershipDays: number; createdAt: string; _count: { records: number; redemptionUses: number } }
 interface ManagedRecord { id: number; title: string; position: string; content: string; type: string; status: string; city: string; updatedAt: string }
 interface ManagedCompany { id: number; name: string; _count: { records: number }; records: ManagedRecord[] }
-interface RedemptionCode { id: number; code: string; membershipDays: number; maxUses: number; usedCount: number; active: boolean; createdAt: string }
+interface RedemptionCode { id: number; code: string; membershipDays: number; maxUses: number; usedCount: number; active: boolean; createdAt: string; uses: Array<{ createdAt: string; user: { identifier: string; nickname: string | null } }> }
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -55,6 +55,7 @@ export default function AdminDashboard() {
   const [codeQuantity, setCodeQuantity] = useState(10);
   const [codeDays, setCodeDays] = useState(7);
   const [customDays, setCustomDays] = useState("");
+  const [codeQuery, setCodeQuery] = useState("");
 
   const loadOperations = async (kind: "companies" | "users" | "codes", q = "") => {
     setOperationMessage("");
@@ -249,6 +250,14 @@ export default function AdminDashboard() {
       </div>
 
       {operationMessage ? <p className="mb-4 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-900">{operationMessage}</p> : null}
+
+      {activeSection === "codes" ? (
+        <section className="mb-4 border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap items-end gap-2"><label className="min-w-[220px] flex-1 text-sm font-semibold text-slate-800">查询兑换码<input value={codeQuery} onChange={(event) => setCodeQuery(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void loadOperations("codes", codeQuery); }} placeholder="输入完整或部分兑换码" className="mt-2 h-10 w-full border border-slate-300 px-3 font-mono text-sm" /></label><button type="button" onClick={() => void loadOperations("codes", codeQuery)} className="h-10 border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">查询</button></div>
+          <p className="mt-2 text-xs text-slate-500">每个兑换码会显示会员天数、可用状态、领取账号和实际兑换时间。</p>
+          {codes.length > 0 ? <div className="mt-4 divide-y divide-slate-100 border-t border-slate-100">{codes.map((code) => <div key={`detail-${code.id}`} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><strong className="font-mono text-sm text-slate-950">{code.code}</strong><span className="text-sm text-slate-600">{code.membershipDays} 天会员 · {code.usedCount}/{code.maxUses} 已用 · {code.active ? "可用" : "已作废"}</span></div>{code.uses.length === 0 ? <p className="mt-1 text-xs text-slate-400">尚未被使用</p> : <div className="mt-2 space-y-1">{code.uses.map((use, index) => <p key={`${code.id}-${index}`} className="text-xs text-slate-600">领取账号：<strong className="font-medium text-slate-800">{use.user.nickname || use.user.identifier}</strong>{use.user.nickname ? ` (${use.user.identifier})` : ""} · 兑换时间：{new Date(use.createdAt).toLocaleString("zh-CN")}</p>)}</div>}</div>)}</div> : <p className="mt-4 text-sm text-slate-400">未找到兑换码</p>}
+        </section>
+      ) : null}
 
       {activeSection === "content" ? <section className="space-y-4"><div className="flex gap-2"><input value={contentQuery} onChange={(event) => setContentQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadOperations("companies", contentQuery); }} placeholder="搜索公司名称" className="h-10 min-w-0 flex-1 border border-slate-300 px-3 text-sm" /><button onClick={() => void loadOperations("companies", contentQuery)} className="border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">搜索</button></div>{companies.map((company) => <div key={company.id} className="border border-slate-200 bg-white p-4"><div className="flex justify-between"><strong>{company.name}</strong><span className="text-xs text-slate-400">{company._count.records} 条记录</span></div><div className="mt-3 space-y-2">{company.records.map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3"><div className="min-w-0"><p className="text-sm font-medium">{record.position || "未填写岗位"} · {record.title}</p><p className="line-clamp-1 text-xs text-slate-500">{record.content}</p></div><button onClick={() => void editRecord(record)} className="border border-slate-300 px-3 py-1.5 text-xs font-bold">编辑</button></div>)}</div></div>)}</section> : null}
 
