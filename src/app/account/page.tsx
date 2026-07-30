@@ -153,6 +153,7 @@ export default function AccountPage() {
   }, []);
 
   const unread = data?.notifications.filter((item) => !item.readAt).length || 0;
+  const notifications = data?.notifications || [];
 
   const redeem = async () => {
     if (!user || !redeemCode.trim()) return;
@@ -254,7 +255,7 @@ export default function AccountPage() {
                 <div><h2 className="text-lg font-semibold text-slate-950">系统通知</h2><p className="mt-1 text-xs text-slate-400">未读 {unread} 条</p></div>
                 {unread > 0 ? <button type="button" onClick={() => void markRead()} className="text-sm text-slate-500 hover:text-slate-950">全部标为已读</button> : null}
               </div>
-              {data.notifications.length === 0 ? <p className="py-12 text-center text-sm text-slate-400">暂无系统通知</p> : data.notifications.map((item) => (
+              {notifications.length === 0 ? <p className="py-12 text-center text-sm text-slate-400">暂无系统通知</p> : notifications.map((item) => (
                 <div key={item.id} className={`border-b border-slate-100 py-5 last:border-0 ${item.readAt ? "" : "bg-amber-50/40"}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div><div className="flex items-center gap-2"><h3 className="text-sm font-medium text-slate-950">{item.title}</h3>{!item.readAt ? <span className="h-1.5 w-1.5 rounded-full bg-red-500" /> : null}</div><p className="mt-2 text-sm leading-6 text-slate-600">{item.content}</p></div>
