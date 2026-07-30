@@ -471,7 +471,10 @@ export async function POST(request: NextRequest) {
     const rawText = typeof body.rawText === "string" ? body.rawText.trim() : "";
     if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
     const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
-    const aiPromise = callJobAnalysisAI(rawText).then((output) => ({ output, error: "" })).catch((error: unknown) => ({ output: null, error: error instanceof Error ? error.message : "AI 复核失败" }));
+    const analysisMode = body.analysisMode === "ai" ? "ai" : "rules";
+    const aiPromise = analysisMode === "ai"
+      ? callJobAnalysisAI(rawText, 180000).then((output) => ({ output, error: "" })).catch((error: unknown) => ({ output: null, error: error instanceof Error ? error.message : "AI 复核失败" }))
+      : Promise.resolve(null);
     const deterministicResult = analyzeText(rawText, companyName);
     const [learnedCorrections, aiOutcome] = await Promise.all([
       prisma.jobAnalysisCorrection.findMany({
@@ -484,16 +487,16 @@ export async function POST(request: NextRequest) {
     ]);
     let result = applyLearnedCorrections(deterministicResult, rawText, learnedCorrections);
     let aiUsed = false;
-    if (aiOutcome.output) {
+    if (analysisMode === "ai" && aiOutcome?.output) {
       result = mergeAIResult(result, aiOutcome.output, rawText);
       aiUsed = true;
-    } else {
-      if (aiOutcome.error) console.error("AI analysis failed, using deterministic analysis:", aiOutcome.error);
-      result = { ...result, aiReview: { status: "unavailable", summary: aiOutcome.error || "AI 未配置或未返回结果", differences: [] } };
+    } else if (analysisMode === "ai") {
+      if (aiOutcome?.error) console.error("AI analysis failed, using deterministic analysis:", aiOutcome.error);
+      result = { ...result, aiReview: { status: "unavailable", summary: aiOutcome?.error || "AI 未配置或未返回结果", differences: [] } };
     }
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
     const item = await prisma.jobAnalysis.create({ data: { userId, title, companyName, source: typeof body.source === "string" ? body.source.trim() || null : null, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null, rawText, resultJson: JSON.stringify(result), riskScore: result.riskScore } });
-    return NextResponse.json({ success: true, aiUsed, item: serialize(item), result });
+    return NextResponse.json({ success: true, analysisMode, aiUsed, item: serialize(item), result });
   } catch (error) {
     console.error("Create analysis archive error:", error);
     return NextResponse.json({ error: "\u5206\u6790\u4fdd\u5b58\u5931\u8d25" }, { status: 500 });

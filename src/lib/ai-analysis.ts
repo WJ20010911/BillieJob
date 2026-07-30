@@ -268,13 +268,13 @@ const SYSTEM_PROMPT = [
   "Return fields as an object, findings as an array with category, item, level, evidence, suggestion, and strengths as an array.",
 ].join(" ");
 
-export async function callJobAnalysisAI(rawText: string): Promise<AIAnalysisOutput | null> {
+export async function callJobAnalysisAI(rawText: string, timeoutMs = 180000): Promise<AIAnalysisOutput | null> {
   const config = await getAIConfig();
   if (!config?.enabled || !config.apiKey || !config.endpoint || !config.model) return null;
 
   const controller = new AbortController();
   // Free/shared models can take longer to produce the requested structured result.
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (config.apiKeyHeader.toLowerCase() === "authorization") headers[config.apiKeyHeader] = "Bearer " + config.apiKey;
@@ -297,7 +297,7 @@ export async function callJobAnalysisAI(rawText: string): Promise<AIAnalysisOutp
     if (!response.ok) throw new Error("AI service returned " + response.status + ": " + body.slice(0, 300));
     return parseJson(contentFromResponse(JSON.parse(body)));
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") throw new Error("AI 服务在 60 秒内未返回结果：请检查模型名称、账号额度或稍后重试。");
+    if (error instanceof Error && error.name === "AbortError") throw new Error(`AI 服务在 ${Math.round(timeoutMs / 1000)} 秒内未返回结果：请检查模型名称、账号额度或稍后重试。`);
     throw error;
   } finally {
     clearTimeout(timeout);

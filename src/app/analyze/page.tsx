@@ -247,7 +247,7 @@ export default function AnalyzePage() {
     }
   };
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (mode: "rules" | "ai") => {
     if (!user) {
       setShowLogin(true);
       return;
@@ -257,12 +257,12 @@ export default function AnalyzePage() {
       return;
     }
     setAnalyzing(true);
-    setMessage("");
+    setMessage(mode === "ai" ? "AI 正在复核招聘信息，免费模型可能需要较长时间，最长等待 3 分钟。" : "正在使用规则引擎分析招聘信息...");
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": String(user.id) },
-        body: JSON.stringify({ title, companyName, source, rawText, imageUrl }),
+        body: JSON.stringify({ title, companyName, source, rawText, imageUrl, analysisMode: mode }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "分析失败");
@@ -403,7 +403,8 @@ export default function AnalyzePage() {
           <h2 className="mt-2 text-lg font-bold text-slate-950">操作面板</h2>
           <p className="mt-2 text-xs leading-5 text-slate-500">上传截图后先识别文字；确认左侧内容后开始分析。</p>
           <div className="mt-5 space-y-3">
-            <button type="button" onClick={() => void runAnalysis()} disabled={analyzing || uploading} className="inline-flex h-12 w-full items-center justify-center border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white shadow-[0_5px_0_#0f172a] transition hover:bg-cyan-700 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-60">{analyzing ? "正在分析..." : "开始分析"}</button>
+            <button type="button" onClick={() => void runAnalysis("rules")} disabled={analyzing || uploading} className="inline-flex h-12 w-full items-center justify-center border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white shadow-[0_5px_0_#0f172a] transition hover:bg-cyan-700 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-60">{analyzing ? "正在分析..." : "普通分析（快速）"}</button>
+            <button type="button" onClick={() => void runAnalysis("ai")} disabled={analyzing || uploading} className="inline-flex min-h-12 w-full flex-col items-center justify-center border-2 border-violet-700 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 transition hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"><span>{analyzing ? "正在分析..." : "AI 分析"}</span><span className="mt-0.5 text-[11px] font-medium text-violet-700">AI 复核，最长等待 3 分钟</span></button>
             <button type="button" onClick={() => void runOcr()} disabled={!imageFile || ocrLoading} className="inline-flex h-11 w-full items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">{ocrLoading ? "识别中..." : "识别截图文字"}</button>
             <button type="button" onClick={clearDraft} disabled={analyzing || uploading} className="inline-flex h-10 w-full items-center justify-center border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50">清空本次输入</button>
           </div>
