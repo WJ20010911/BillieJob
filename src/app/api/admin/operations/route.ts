@@ -63,6 +63,12 @@ export async function PATCH(request: NextRequest) {
     const record = await prisma.record.update({ where: { id }, data: { title: typeof body.title === "string" ? body.title.trim().slice(0, 120) : undefined, position: typeof body.position === "string" ? body.position.trim().slice(0, 80) : undefined, content: typeof body.content === "string" ? body.content.trim().slice(0, 5000) : undefined }, select: { id: true, title: true, position: true, content: true } });
     return NextResponse.json({ success: true, record });
   }
+  if (body.action === "deleteRecord") {
+    const id = Number(body.id);
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "记录参数无效" }, { status: 400 });
+    await prisma.record.delete({ where: { id } });
+    return NextResponse.json({ success: true });
+  }
   if (body.action === "setCodeActive") {
     const id = Number(body.id);
     const active = Boolean(body.active);

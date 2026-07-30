@@ -56,6 +56,11 @@ export default function AdminDashboard() {
   const [codeDays, setCodeDays] = useState(7);
   const [customDays, setCustomDays] = useState("");
   const [codeQuery, setCodeQuery] = useState("");
+  const [editingRecord, setEditingRecord] = useState<ManagedRecord | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editPosition, setEditPosition] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   const loadOperations = async (kind: "companies" | "users" | "codes", q = "") => {
     setOperationMessage("");
@@ -68,12 +73,28 @@ export default function AdminDashboard() {
     if (kind === "codes") setCodes(data.codes || []);
   };
 
-  const editRecord = async (record: ManagedRecord) => {
-    const title = prompt("记录标题", record.title); if (title === null) return;
-    const position = prompt("岗位名称", record.position); if (position === null) return;
-    const content = prompt("记录内容", record.content); if (content === null) return;
-    const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "updateRecord", id: record.id, title, position, content }) });
-    if (response.ok) { setOperationMessage("记录已更新"); void loadOperations("companies", contentQuery); } else setOperationMessage("更新失败");
+  const editRecord = (record: ManagedRecord) => {
+    setEditingRecord(record); setEditTitle(record.title); setEditPosition(record.position); setEditContent(record.content);
+  };
+
+  const saveRecord = async () => {
+    if (!editingRecord) return;
+    setEditSaving(true);
+    try {
+      const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "updateRecord", id: editingRecord.id, title: editTitle, position: editPosition, content: editContent }) });
+      if (!response.ok) throw new Error();
+      setEditingRecord(null); setOperationMessage("记录已更新"); void loadOperations("companies", contentQuery);
+    } catch { setOperationMessage("更新失败"); } finally { setEditSaving(false); }
+  };
+
+  const deleteRecord = async () => {
+    if (!editingRecord || !window.confirm("确定永久删除这条记录吗？此操作不能撤销。")) return;
+    setEditSaving(true);
+    try {
+      const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "deleteRecord", id: editingRecord.id }) });
+      if (!response.ok) throw new Error();
+      setEditingRecord(null); setOperationMessage("记录已删除"); void loadOperations("companies", contentQuery);
+    } catch { setOperationMessage("删除失败"); } finally { setEditSaving(false); }
   };
 
   const giftMembership = async (userId: number, preset?: number) => {
@@ -251,6 +272,8 @@ export default function AdminDashboard() {
 
       {operationMessage ? <p className="mb-4 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-900">{operationMessage}</p> : null}
 
+      {editingRecord ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4" role="dialog" aria-modal="true" aria-label="编辑记录"><div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border border-slate-300 bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 className="font-bold text-slate-950">编辑记录</h2><p className="mt-1 text-xs text-slate-500">可直接修改标题、岗位名称与完整内容。</p></div><button type="button" onClick={() => setEditingRecord(null)} className="h-8 w-8 text-xl text-slate-500 hover:bg-slate-100" aria-label="关闭">×</button></div><div className="space-y-4 p-5"><label className="block text-sm font-semibold text-slate-800">标题<input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} maxLength={120} className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="block text-sm font-semibold text-slate-800">岗位名称<input value={editPosition} onChange={(event) => setEditPosition(event.target.value)} maxLength={80} className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="block text-sm font-semibold text-slate-800">记录内容<textarea value={editContent} onChange={(event) => setEditContent(event.target.value)} maxLength={5000} rows={14} className="mt-2 w-full resize-y border border-slate-300 px-3 py-2 text-sm font-normal leading-6" /></label></div><div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4"><button type="button" onClick={() => void deleteRecord()} disabled={editSaving} className="border border-red-300 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-50">删除记录</button><div className="flex gap-2"><button type="button" onClick={() => setEditingRecord(null)} disabled={editSaving} className="border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">取消</button><button type="button" onClick={() => void saveRecord()} disabled={editSaving || !editTitle.trim() || !editContent.trim()} className="border-2 border-slate-950 bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{editSaving ? "保存中..." : "保存修改"}</button></div></div></div></div> : null}
+
       {activeSection === "codes" ? (
         <section className="mb-4 border border-slate-200 bg-white p-4">
           <div className="flex flex-wrap items-end gap-2"><label className="min-w-[220px] flex-1 text-sm font-semibold text-slate-800">查询兑换码<input value={codeQuery} onChange={(event) => setCodeQuery(event.target.value.toUpperCase())} onKeyDown={(event) => { if (event.key === "Enter") void loadOperations("codes", codeQuery); }} placeholder="输入完整或部分兑换码" className="mt-2 h-10 w-full border border-slate-300 px-3 font-mono text-sm" /></label><button type="button" onClick={() => void loadOperations("codes", codeQuery)} className="h-10 border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">查询</button></div>
@@ -314,7 +337,7 @@ export default function AdminDashboard() {
         </section>
           ) : null}
         </div>
-      ) : (
+      ) : activeSection === "audit" ? (
         <>
 
       <div className="mb-6 flex gap-2">
@@ -406,7 +429,7 @@ export default function AdminDashboard() {
         </div>
       )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }
