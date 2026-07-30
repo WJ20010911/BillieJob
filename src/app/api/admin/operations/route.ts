@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ users });
   }
   if (kind === "companies") {
-    const companies = await prisma.company.findMany({ where: query ? { name: { contains: query } } : undefined, orderBy: { updatedAt: "desc" }, take: 100, include: { records: { orderBy: { updatedAt: "desc" }, take: 80, select: { id: true, title: true, type: true, status: true, position: true, city: true, content: true, updatedAt: true } }, _count: { select: { records: true } } } });
+    const companies = await prisma.company.findMany({ where: { records: { some: {} }, ...(query ? { name: { contains: query } } : {}) }, orderBy: { updatedAt: "desc" }, take: 100, include: { records: { orderBy: { updatedAt: "desc" }, take: 80, select: { id: true, title: true, type: true, status: true, position: true, city: true, content: true, updatedAt: true } }, _count: { select: { records: true } } } });
     return NextResponse.json({ companies });
   }
   if (kind === "codes") {
