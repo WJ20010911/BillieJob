@@ -80,6 +80,7 @@ export default function UserMenu() {
 
   const openNotifications = async () => {
     if (!user) return;
+    setShowMenu(false);
     setShowNotifications((value) => !value);
     try {
       const response = await fetch("/api/account", { headers: { "x-user-id": String(user.id) } });
@@ -166,7 +167,10 @@ export default function UserMenu() {
               ) : null}
             </button>
             <button
-              onClick={() => setShowMenu(!showMenu)}
+              onClick={() => {
+                setShowNotifications(false);
+                setShowMenu((value) => !value);
+              }}
               className="flex items-center gap-2 text-sm text-slate-700 transition hover:text-slate-950"
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
