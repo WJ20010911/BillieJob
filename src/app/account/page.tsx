@@ -152,6 +152,8 @@ export default function AccountPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
+  const unread = data?.notifications.filter((item) => !item.readAt).length || 0;
+
   const redeem = async () => {
     if (!user || !redeemCode.trim()) return;
     setRedeeming(true); setMessage("");
