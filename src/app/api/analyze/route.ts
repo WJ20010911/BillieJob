@@ -195,6 +195,8 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const money = /\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)(?:\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\/\u6708|\/\u5e74|\/\u5929|\/\u5c0f\u65f6)?/u;
   const labeledSalary = capture(text, /(?:\u85aa\u8d44\u5f85\u9047|\u85aa\u8d44\u8303\u56f4|\u85aa\u916c\u8303\u56f4|\u85aa\u916c|\u6708\u85aa|\u5de5\u8d44)[\s:：]*([0-9]+(?:\.\d+)?(?:\s*(?:[kK]|\u4e07|\u5343|\u5143))?(?:\s*[-~\u81f3\u5230]\s*[0-9]+(?:\.\d+)?(?:\s*(?:[kK]|\u4e07|\u5343|\u5143))?)?)/u);
   const compactSalaryRange = firstMatch(text, /\d+(?:\.\d+)?\s*[-~\u81f3\u5230]\s*\d+(?:\.\d+)?\s*[kK]\+?/u);
+  const partTimeMonthlyMatch = text.match(/\u6309\s*(\d+(?:\.\d+)?)\s*\u5929[^。；;]{0,30}?(?:\u5168\u591c\u73ed)?\s*(\d+(?:\.\d+)?)\s*(?:\u5143)?/u);
+  const partTimeMonthlyValue = partTimeMonthlyMatch ? `\u5168\u591c\u73ed ${partTimeMonthlyMatch[2]} \u5143/月（按 ${partTimeMonthlyMatch[1]} 天计算）` : "";
   const salaryNumber = labeledSalary || compactSalaryRange || firstMatch(text, money);
   const salaryFound = Boolean(salaryNumber) || has(text, /\u85aa\u8d44|\u5de5\u8d44|\u6708\u85aa|\u5e74\u85aa|\u85aa\u916c/u);
   const salaryUnclear = has(text, /\u9762\u8bae|\u85aa\u8d44\u53ef\u8c08|\u5f85\u9047\u4f18\u539a|\u9ad8\u85aa|\u4e30\u539a/u) && !salaryNumber;
@@ -202,6 +204,10 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const salaryRangeValue = salaryNumber ? amountWithUnit(salaryNumber) + (salaryHasPeriod ? "" : "\uff08\u8ba1\u85aa\u5468\u671f\u672a\u8bf4\u660e\uff09") : salaryUnclear ? "\u9762\u8bae/\u7b3c\u7edf\u8868\u8ff0" : WORDS.missing;
   fields.salary = { value: salaryRangeValue, state: salaryNumber ? (salaryHasPeriod ? "found" : "unclear") : salaryUnclear ? "unclear" : "missing" };
   fields.salaryRange = { value: salaryRangeValue, state: fields.salary.state };
+  if (partTimeMonthlyValue) {
+    fields.salary = { value: partTimeMonthlyValue, state: "found" };
+    fields.salaryRange = { value: partTimeMonthlyValue, state: "found" };
+  }
 
   // Do not treat a bare \"工作地点\" label as a location: OCR text often has no line breaks.
   const locationValue = firstMatch(text, /\u5317\u4eac(?:\u5e02)?|\u4e0a\u6d77(?:\u5e02)?|\u5e7f\u5dde(?:\u5e02)?|\u6df1\u5733(?:\u5e02)?|\u676d\u5dde(?:\u5e02)?|\u6210\u90fd(?:\u5e02)?|\u6b66\u6c49(?:\u5e02)?|\u5357\u4eac(?:\u5e02)?|\u82cf\u5dde(?:\u5e02)?|\u897f\u5b89(?:\u5e02)?|\u91cd\u5e86(?:\u5e02)?|\u8fdc\u7a0b|\u5728\u5bb6\u529e\u516c/u);
@@ -252,12 +258,23 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
 
   const benefitsValue = firstMatch(text, /\u4e94\u9669\u4e00\u91d1|\u4e94\u9669|\u793e\u4fdd|\u516c\u79ef\u91d1|\u5e26\u85aa\u5e74\u5047|\u5e74\u7ec8\u5956|\u9910\u8865|\u623f\u8865|\u8f66\u8865/u);
   fields.benefits = { value: benefitsValue || WORDS.missing, state: benefitsValue ? "found" : "missing" };
+  const benefitDetail = [
+    has(text, /\u9910\u8865/u) ? "餐补" : "",
+    has(text, /\u805a\u9910/u) ? "按月不定期聚餐" : "",
+    firstMatch(text, /\u751f\u65e5\u7ea2\u5305\s*\d+(?:\.\d+)?\s*\u5143/u),
+    firstMatch(text, /(?:\u5973\u795e|\u7aef\u5348|\u4e2d\u79cb|\u6625\u8282)[^。；;]{0,50}(?:\u7ea2\u5305|\u793c\u7269)/u),
+  ].filter(Boolean).join("；");
+  if (benefitDetail) fields.benefits = { value: benefitDetail, state: "found" };
 
   const employmentValue = firstMatch(text, /\u5168\u804c|\u517c\u804c|\u5b9e\u4e60|\u52b3\u52a1|\u52b3\u52a8\u5408\u540c|\u6b63\u5f0f|\u793e\u62db|\u6821\u62db|\u5916\u5305/u);
   fields.employment = { value: employmentValue || WORDS.missing, state: employmentValue ? "found" : "missing" };
+  const contractingPlatform = firstMatch(text, /(?:\u7531)?[^，。；;]{0,20}?(?:\u7075\u5de5\u5e73\u53f0|\u4f17\u5305\u5e73\u53f0|\u5916\u5305\u5e73\u53f0)[^，。；;]{0,28}(?:\u7b7e\u7ea6|\u53d1\u653e\u62a5\u916c)/u);
+  if (contractingPlatform) fields.employment = { value: [employmentValue, contractingPlatform].filter(Boolean).join("；"), state: "found" };
 
   const processValue = firstMatch(text, /\u9762\u8bd5|\u7b14\u8bd5|\d+\s*\u8f6e\u9762\u8bd5|\u5165\u804c\u65f6\u95f4|\u8bd5\u7528\u671f/u);
   fields.process = { value: processValue || WORDS.missing, state: processValue ? "found" : "missing" };
+  const trainingDetail = firstMatch(text, /\u57f9\u8bad\u671f[^。；;]{0,180}/u);
+  if (trainingDetail) fields.process = { value: trainingDetail, state: "found" };
 
   const allowancePattern = /\u8865\u8d34|\u8865\u52a9/u;
   const baseAmount = capture(text, /(\d+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)\s*(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u65e0\u8d23\u5e95\u85aa|\u56fa\u5b9a\u5de5\u8d44|\u5e95\u85aa)/u) || capture(text, /(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u65e0\u8d23\u5e95\u85aa|\u56fa\u5b9a\u5de5\u8d44|\u5e95\u85aa)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
@@ -304,6 +321,29 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.housingAllowance = { value: housingValue || WORDS.missing, state: housingValue ? "found" : "missing" };
   fields.bonus = { value: bonusValue || WORDS.missing, state: bonusValue ? "found" : "missing" };
   fields.socialBenefits = { value: socialValue || WORDS.missing, state: socialValue ? "found" : "missing" };
+  const hourlyRate = capture(text, /(\d+(?:\.\d+)?)\s*\u5143\s*\/?\s*\u5c0f\u65f6/u);
+  const hourlyBase = capture(text, /\u57fa\u672c(?:\u6536\u5165|\u5de5\u8d44)[\s:：]*(\d+(?:\.\d+)?)\s*\u5143/u);
+  const hourlyMeal = capture(text, /(\d+(?:\.\d+)?)\s*\u5143?\s*(?:\u4ea4)?\u9910\u8865/u);
+  const monthlyFloatingAward = capture(text, /(\d+(?:\.\d+)?)\s*\u5143?\s*\u6d6e\u52a8\u5956/u);
+  const shiftAllowance = capture(text, /(?:\u73ed\u6b21\u8865\u8d34|\u591c\u73ed\u8865\u8d34)[^。；;]{0,12}?(\d+(?:\.\d+)?)\s*\u5143\s*\/?\s*\u6b21/u);
+  const milestoneRewards = [
+    firstMatch(text, /\u4e0a\u7ebf\u6ee1\s*30\s*\u5929\u5956\u52b1\s*\d+(?:\.\d+)?\s*\u5143/u),
+    firstMatch(text, /\u4e0a\u7ebf\u6ee1\s*4\s*\u4e2a\u6708\u5956\u52b1\s*\d+(?:\.\d+)?\s*\u5143/u),
+  ].filter(Boolean).join("；");
+  if (hourlyRate) {
+    const hourlyComponents = [
+      hourlyBase ? `基本收入 ${hourlyBase} 元/小时` : "",
+      hourlyMeal ? `餐补 ${hourlyMeal} 元/小时（计入时薪）` : "",
+      monthlyFloatingAward ? `浮动奖 ${monthlyFloatingAward} 元/月（业务和考勤）` : "",
+      shiftAllowance ? `夜班班次补贴 ${shiftAllowance} 元/次` : "",
+    ].filter(Boolean).join(" + ");
+    fields.salaryStructure = { value: `兼职时薪 ${hourlyRate} 元/小时${hourlyComponents ? `：${hourlyComponents}` : ""}`, state: "found" };
+    fields.salaryBase = { value: hourlyBase ? `基本收入 ${hourlyBase} 元/小时` : `时薪 ${hourlyRate} 元/小时`, state: "found" };
+    if (monthlyFloatingAward) fields.performance = { value: `浮动奖 ${monthlyFloatingAward} 元/月（业务和考勤）`, state: "unclear" };
+    if (shiftAllowance) fields.dailyAllowance = { value: `夜班班次补贴 ${shiftAllowance} 元/次`, state: "found" };
+    if (hourlyMeal) fields.mealAllowance = { value: `餐补 ${hourlyMeal} 元/小时（已计入时薪）`, state: "found" };
+    if (milestoneRewards) fields.bonus = { value: `阶段奖励：${milestoneRewards}`, state: "found" };
+  }
   const withHousingFund = /\u4e94\u9669\u4e00\u91d1|\u516c\u79ef\u91d1/u.test(socialValue);
   const monthlyRestDays = Number(capture(text, /\u6708\u4f11\s*(\d+(?:\.\d+)?)\s*\u5929/u) || 0);
   const scheduledDays = monthlyRestDays ? Math.max(0, 30 - monthlyRestDays) : rotationMatch ? Math.round(30 * Number(rotationMatch[1]) / (Number(rotationMatch[1]) + Number(rotationMatch[2])) * 10) / 10 : weeklyDays ? Math.round(weeklyDays * 52 / 12 * 10) / 10 : 0;
@@ -313,6 +353,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const regularGross = regularStage ? stageGross(regularStage) : 0;
   const grossStages = [probationStage ? `\u8bd5\u7528\u671f\u7a0e\u524d\u7ea6 ${Math.round(probationGross)} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u540e\u7a0e\u524d\u7ea6 ${Math.round(regularGross)} \u5143/\u6708` : ""].filter(Boolean);
   fields.estimatedGross = { value: grossStages.length ? `${grossStages.join("\uff1b")}\uff08\u6309${scheduledDays || "\u672a\u77e5"}\u4e2a\u5de5\u4f5c\u65e5/\u6708\u3001\u9910\u8865\u4e0e\u901a\u5bb5\u73ed\u8865\u8d34\u8ba1\u5165\uff09` : WORDS.missing, state: grossStages.length && scheduledDays ? "unclear" : "missing" };
+  if (partTimeMonthlyValue) fields.estimatedGross = { value: `招聘方口径：${partTimeMonthlyValue}，未说明是否已扣除个税或其他费用`, state: "unclear" };
   const salaryStageLabel = (name: string, stage: CompensationStage) => {
     const variable = [stage.mealPerDay ? `\u9910\u8865 ${stage.mealPerDay} \u5143/\u5de5\u4f5c\u65e5` : "", stage.overnightNight ? `\u901a\u5bb5\u591c\u73ed\u8865\u8d34 ${stage.overnightNight} \u5143/\u665a` : ""].filter(Boolean).join(" + ");
     return scheduledDays ? `${name}\u7ea6 ${Math.round(stageGross(stage))} \u5143/\u6708\uff08\u56fa\u5b9a ${stage.fixed} + \u6309 ${scheduledDays} \u4e2a\u5de5\u4f5c\u65e5\u4f30\u7b97\u8865\u8d34\uff09` : `${name}\u56fa\u5b9a ${stage.fixed} \u5143/\u6708${variable ? `\uff1b\u53e6\u6709 ${variable}` : ""}`;
