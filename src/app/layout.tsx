@@ -67,8 +67,8 @@ export default function RootLayout({
       ].join(" ")}
     >
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
-        <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color:rgba(255,253,248,0.84)] backdrop-blur-xl">
-          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 overflow-x-auto px-4">
+        <header className="sticky top-0 z-[100] isolate border-b border-[var(--line)] bg-[color:rgba(255,253,248,0.84)] backdrop-blur-xl">
+          <div className="relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 overflow-visible px-4">
             <Link href="/" className="flex shrink-0 items-baseline gap-2 text-slate-950 transition hover:text-slate-700">
              <span className="font-[var(--font-display-serif)] text-xl font-semibold tracking-[0.08em]">
                BillieJob
