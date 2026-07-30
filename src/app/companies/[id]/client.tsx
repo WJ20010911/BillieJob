@@ -114,7 +114,8 @@ export default function CompanyPageClient({
       try {
         const raw = localStorage.getItem("job_insight_user");
         if (!raw) return;
-        const currentUser = JSON.parse(raw) as { id: number };
+        const currentUser = JSON.parse(raw) as { id: number; membershipDays?: number };
+        if ((currentUser.membershipDays || 0) > 0) setShowContent(true);
         void fetch(`/api/account/favorites?kind=company&id=${company.id}`, {
           headers: { "x-user-id": String(currentUser.id) },
         }).then((response) => response.ok ? response.json() : null).then((result) => {
