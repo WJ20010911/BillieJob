@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import LoginDialog from "@/components/LoginDialog";
-import RecordCard from "@/components/RecordCard";
 import type { CompanyExternalProfile } from "@/lib/company-profile";
 import type { RecordData, RecordType } from "@/types";
 
@@ -27,10 +26,16 @@ interface CompanyInfo {
 }
 
 const ratingTypeLabels: Record<RecordType, string> = {
-  JD_SNAPSHOT: "招聘 JD",
+  JD_SNAPSHOT: "招聘信息",
   CHAT_SCREENSHOT: "HR 对话",
   INTERVIEW_EXPERIENCE: "面试经历",
 };
+
+const workflowTypes: RecordType[] = ["JD_SNAPSHOT", "CHAT_SCREENSHOT", "INTERVIEW_EXPERIENCE"];
+
+function formatPublishedAt(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
 
 function RatingStars({ rating }: { rating: number | null }) {
   const filled = rating ? Math.round(rating) : 0;
@@ -146,6 +151,11 @@ export default function CompanyPageClient({
     (groups[key] ||= []).push(record);
     return groups;
   }, {});
+  const contributorRows = (records: RecordData[]) => Object.values(records.reduce<Record<string, RecordData[]>>((groups, record) => {
+    const key = record.uploaderId || `anonymous-${record.id}`;
+    (groups[key] ||= []).push(record);
+    return groups;
+  }, {})).sort((left, right) => new Date(right[0].createdAt).getTime() - new Date(left[0].createdAt).getTime());
 
   const handleLogin = async () => {
     const trimmed = loginInput.trim();
@@ -436,7 +446,7 @@ export default function CompanyPageClient({
             </a>
           </div>
         ) : showContent ? (
-          Object.entries(recordsByPosition).map(([position, records]) => <section key={position} className="border-t border-slate-200 pt-5 first:border-t-0 first:pt-0"><div className="mb-3 flex items-center gap-3"><h3 className="text-base font-semibold text-slate-950">{position}</h3><span className="text-xs text-slate-400">{records.length} 条记录</span></div><div className="space-y-4">{records.map((record) => <RecordCard key={record.id} record={record} />)}</div></section>)
+          Object.entries(recordsByPosition).map(([position, records]) => <section key={position} className="border-t border-slate-200 pt-6 first:border-t-0 first:pt-0"><div className="mb-3 flex items-center gap-3"><h3 className="text-base font-semibold text-slate-950">{position}</h3><span className="text-xs text-slate-400">{records.length} 条记录</span></div><div className="overflow-x-auto border border-slate-200 bg-white"><div className="min-w-[860px]"><div className="grid grid-cols-[150px_repeat(3,minmax(0,1fr))] border-b-2 border-slate-900 bg-slate-50 text-xs font-bold text-slate-600"><div className="px-4 py-3">发布者 / 时间</div>{workflowTypes.map((type) => <div key={type} className="border-l border-slate-200 px-4 py-3">{ratingTypeLabels[type]}</div>)}</div>{contributorRows(records).map((row, rowIndex) => { const newest = row.reduce((latest, item) => new Date(item.createdAt) > new Date(latest.createdAt) ? item : latest, row[0]); return <div key={`${position}-${rowIndex}`} className="grid grid-cols-[150px_repeat(3,minmax(0,1fr))] border-b border-slate-200 last:border-b-0"><div className="bg-slate-50/60 px-4 py-4"><p className="text-sm font-semibold text-slate-900">贡献者 {rowIndex + 1}</p><time className="mt-1 block text-xs leading-5 text-slate-500">{formatPublishedAt(newest.createdAt)}</time><p className="mt-2 text-xs text-slate-400">已发布 {row.length}/3 项</p></div>{workflowTypes.map((type) => { const record = row.find((item) => item.type === type); return <div key={type} className="min-h-36 border-l border-slate-200 p-3">{record ? <a href={`/records/${record.id}`} className="group block h-full border border-slate-200 bg-white p-3 transition hover:border-slate-950 hover:bg-slate-50"><div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-500">{ratingTypeLabels[type]}</span>{record.rating ? <span className="text-xs font-bold text-amber-500">{'★'.repeat(record.rating)}</span> : null}</div><p className="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-slate-900 group-hover:text-cyan-800">{record.title}</p><p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-500">{record.content}</p><time className="mt-3 block text-[11px] text-slate-400">{formatPublishedAt(record.createdAt)}</time></a> : <div className="flex h-full min-h-28 items-center justify-center border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">尚未发布</div>}</div>; })}</div>; })}</div></div></section>)
         ) : null}
       </div>
 
