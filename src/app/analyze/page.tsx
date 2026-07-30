@@ -389,7 +389,6 @@ export default function AnalyzePage() {
             {imagePreview ? <div className="relative h-56 w-full"><Image src={imagePreview} alt="招聘截图预览" fill unoptimized className="object-contain" /></div> : <div className="px-6 text-center"><div className="text-3xl">▧</div><div className="mt-2 text-sm font-bold text-slate-700">点击上传招聘平台截图</div><div className="mt-1 text-xs text-slate-400">支持 PNG / JPEG / WebP / GIF，最大 10MB</div></div>}
             <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleImage} className="hidden" />
           </label>
-          {uploading ? <p className="mt-2 text-xs text-cyan-700">正在保存截图...</p> : null}
 
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-semibold text-slate-800">分析标题<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：某公司产品经理 JD" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
@@ -397,7 +396,6 @@ export default function AnalyzePage() {
           </div>
           <label className="mt-4 block text-sm font-semibold text-slate-800">来源平台（可选）<input value={source} onChange={(event) => setSource(event.target.value)} placeholder="例如：BOSS 直聘、猎聘、微信群" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
           <label className="mt-4 block text-sm font-semibold text-slate-800">招聘文字 <span className="font-normal text-slate-400">（必填，截图识别/复制后粘贴）</span><textarea value={rawText} onChange={(event) => setRawText(event.target.value)} rows={8} placeholder="把截图中的职位名称、职责、薪资、工作地点、要求等文字粘贴到这里，系统会按字段分析..." className="mt-2 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm font-normal leading-6 outline-none focus:border-cyan-600" /></label>
-          {message ? <p className="mt-4 border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-cyan-900">{message}</p> : null}
         </section>
 
         <aside className="h-fit border-2 border-slate-200 bg-white p-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
@@ -409,6 +407,7 @@ export default function AnalyzePage() {
             <button type="button" onClick={() => void runOcr()} disabled={!imageFile || ocrLoading} className="inline-flex h-11 w-full items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">{ocrLoading ? "识别中..." : "识别截图文字"}</button>
             <button type="button" onClick={clearDraft} disabled={analyzing || uploading} className="inline-flex h-10 w-full items-center justify-center border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50">清空本次输入</button>
           </div>
+          {uploading || message ? <div className="mt-5 border-t border-slate-100 pt-4"><p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">提示</p>{uploading ? <p className="mt-2 border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-800">正在保存截图...</p> : null}{message ? <p className="mt-2 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm leading-5 text-cyan-900">{message}</p> : null}</div> : null}
           {activeArchiveId ? <div className="mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">本次会更新已打开的存档；新的分析会另存为新记录。</div> : null}
         </aside>
 
