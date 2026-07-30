@@ -38,6 +38,7 @@ model User {
   favoriteCompanies FavoriteCompany[]
   favoriteRecords FavoriteRecord[]
   browseHistory  BrowseHistory[]
+  redemptionUses RedemptionUse[]
   jobAnalyses    JobAnalysis[]
   jobAnalysisCorrections JobAnalysisCorrection[]
 }
@@ -105,6 +106,29 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+}
+
+model RedemptionCode {
+  id             Int      @id @default(autoincrement())
+  code           String   @unique
+  membershipDays Int
+  maxUses        Int      @default(1)
+  usedCount      Int      @default(0)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  uses           RedemptionUse[]
+}
+
+model RedemptionUse {
+  id        Int            @id @default(autoincrement())
+  codeId    Int
+  code      RedemptionCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now())
+
+  @@unique([codeId, userId])
+  @@index([userId])
 }
 
 model FavoriteCompany {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Tab = "notifications" | "records" | "history" | "favorites" | "profile";
+type Tab = "records" | "history" | "favorites" | "profile" | "redeem";
 
 interface AccountUser {
   id: number;
@@ -56,11 +56,11 @@ interface AccountData {
 
 const USER_KEY = "job_insight_user";
 const tabs: Array<{ key: Tab; label: string }> = [
-  { key: "notifications", label: "通知" },
   { key: "records", label: "提交记录" },
   { key: "history", label: "浏览历史" },
   { key: "favorites", label: "收藏" },
   { key: "profile", label: "账号资料" },
+  { key: "redeem", label: "兑换会员" },
 ];
 
 const typeLabels: Record<string, string> = {
@@ -111,11 +111,13 @@ function RecordLine({ record }: { record: RecordItem }) {
 export default function AccountPage() {
   const [user, setUser] = useState<AccountUser | null>(null);
   const [data, setData] = useState<AccountData | null>(null);
-  const [tab, setTab] = useState<Tab>("notifications");
+  const [tab, setTab] = useState<Tab>("records");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [nickname, setNickname] = useState("");
   const [saving, setSaving] = useState(false);
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
 
   const loadAccount = async (userId: number) => {
     setLoading(true);
@@ -150,7 +152,17 @@ export default function AccountPage() {
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
-  const unread = useMemo(() => data?.notifications.filter((item) => !item.readAt).length || 0, [data]);
+  const redeem = async () => {
+    if (!user || !redeemCode.trim()) return;
+    setRedeeming(true); setMessage("");
+    try {
+      const response = await fetch("/api/account/redeem", { method: "POST", headers: { "Content-Type": "application/json", "x-user-id": String(user.id) }, body: JSON.stringify({ code: redeemCode }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Redeem failed");
+      const nextUser = result.user as AccountUser;
+      setUser(nextUser); setData((previous) => previous ? { ...previous, user: nextUser } : previous); localStorage.setItem(USER_KEY, JSON.stringify(nextUser)); setRedeemCode(""); setMessage(`Redeemed ${result.days} membership days.`);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Redeem failed"); } finally { setRedeeming(false); }
+  };
 
   const changeTab = (next: Tab) => {
     setTab(next);
@@ -227,14 +239,14 @@ export default function AccountPage() {
               onClick={() => changeTab(item.key)}
               className={`whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm transition lg:block lg:w-full ${tab === item.key ? "bg-slate-950 font-medium text-white" : "text-slate-600 hover:bg-slate-100"}`}
             >
-              {item.label}{item.key === "notifications" && unread > 0 ? ` ${unread}` : ""}
+              {item.label}
             </button>
           ))}
         </nav>
 
         <section className="min-w-0 rounded-2xl border border-slate-200 bg-white px-5 py-2 shadow-[0_18px_48px_rgba(15,23,42,0.05)] sm:px-7">
           {loading ? <div className="py-16 text-center text-sm text-slate-400">正在加载...</div> : null}
-          {!loading && data && tab === "notifications" ? (
+          {false ? (
             <div>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-5">
                 <div><h2 className="text-lg font-semibold text-slate-950">系统通知</h2><p className="mt-1 text-xs text-slate-400">未读 {unread} 条</p></div>
@@ -293,6 +305,12 @@ export default function AccountPage() {
                 <button type="button" onClick={() => void saveProfile()} disabled={saving} className="mt-5 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-60">{saving ? "保存中..." : "保存昵称"}</button>
                 {message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}
               </div>
+            </div>
+          ) : null}
+          {!loading && data && tab === "redeem" ? (
+            <div>
+              <div className="border-b border-slate-100 py-5"><h2 className="text-lg font-semibold text-slate-950">兑换会员</h2><p className="mt-1 text-xs text-slate-400">输入兑换码后，会员天数将立即到账。</p></div>
+              <div className="max-w-md py-6"><label className="block text-sm font-medium text-slate-800">兑换码<input value={redeemCode} onChange={(event) => setRedeemCode(event.target.value.toUpperCase())} maxLength={32} placeholder="BJXXXXXXXXXX" className="mt-2 h-11 w-full border border-slate-200 px-3 font-mono text-sm uppercase outline-none focus:border-slate-900" /></label><button type="button" onClick={() => void redeem()} disabled={redeeming || !redeemCode.trim()} className="mt-4 bg-slate-950 px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50">{redeeming ? "兑换中..." : "立即兑换"}</button>{message ? <p className="mt-3 text-sm text-slate-600">{message}</p> : null}</div>
             </div>
           ) : null}
         </section>

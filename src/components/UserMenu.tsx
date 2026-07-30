@@ -42,6 +42,8 @@ export default function UserMenu() {
   const [logging, setLogging] = useState(false);
   const [error, setError] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{ id: number; title: string; content: string; link: string | null; readAt: string | null; createdAt: string }>>([]);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,7 +59,10 @@ export default function UserMenu() {
     fetch("/api/account", { headers: { "x-user-id": String(user.id) } })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (data) setUnreadCount(data.unreadCount || 0);
+        if (data) {
+          setUnreadCount(data.unreadCount || 0);
+          setNotifications(data.notifications || []);
+        }
       })
       .catch(() => undefined);
   }, [user]);
@@ -72,6 +77,28 @@ export default function UserMenu() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showMenu]);
+
+  const openNotifications = async () => {
+    if (!user) return;
+    setShowNotifications((value) => !value);
+    try {
+      const response = await fetch("/api/account", { headers: { "x-user-id": String(user.id) } });
+      const data = await response.json();
+      if (response.ok) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch { /* leave the previous notification snapshot visible */ }
+  };
+
+  const markAllRead = async () => {
+    if (!user || unreadCount === 0) return;
+    const response = await fetch("/api/account/notifications", { method: "PATCH", headers: { "Content-Type": "application/json", "x-user-id": String(user.id) }, body: JSON.stringify({ all: true }) });
+    if (response.ok) {
+      setUnreadCount(0);
+      setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })));
+    }
+  };
 
   const handleLogin = async () => {
     const trimmed = identifier.trim();
@@ -124,8 +151,9 @@ export default function UserMenu() {
       {user ? (
         <div ref={menuRef}>
           <div className="flex items-center gap-3">
-            <a
-              href="/account?tab=notifications"
+            <button
+              type="button"
+              onClick={() => void openNotifications()}
               className="relative flex h-8 w-8 items-center justify-center rounded-full text-lg text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
               aria-label="系统通知"
               title="系统通知"
@@ -136,7 +164,7 @@ export default function UserMenu() {
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               ) : null}
-            </a>
+            </button>
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="flex items-center gap-2 text-sm text-slate-700 transition hover:text-slate-950"
@@ -149,6 +177,15 @@ export default function UserMenu() {
             </button>
           </div>
 
+          {showNotifications ? (
+            <div className="absolute right-0 z-50 mt-2 w-[min(360px,calc(100vw-2rem))] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.14)]">
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><strong className="text-sm text-slate-900">系统通知</strong><button type="button" onClick={() => void markAllRead()} disabled={unreadCount === 0} className="text-xs font-medium text-cyan-700 disabled:text-slate-300">全部标为已读</button></div>
+              <div className="max-h-80 overflow-y-auto">
+                {notifications.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-400">暂无通知</p> : notifications.map((item) => <a key={item.id} href={item.link || "/account?tab=profile"} className={`block border-b border-slate-100 px-4 py-3 last:border-0 hover:bg-slate-50 ${item.readAt ? "" : "bg-cyan-50/50"}`} onClick={() => setShowNotifications(false)}><div className="flex gap-2"><span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${item.readAt ? "bg-transparent" : "bg-red-500"}`} /><div><p className="text-sm font-medium text-slate-900">{item.title}</p><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{item.content}</p></div></div></a>)}
+              </div>
+            </div>
+          ) : null}
+
           {showMenu ? (
             <div className="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-slate-200 bg-white py-2 shadow-[0_18px_48px_rgba(15,23,42,0.12)]">
               <div className="border-b border-slate-100 px-4 py-2">
@@ -158,13 +195,7 @@ export default function UserMenu() {
                   会员剩余 <strong className="text-amber-600">{user.membershipDays}</strong> 天
                 </div>
               </div>
-              <a
-                href="/account?tab=notifications"
-                className="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                onClick={() => setShowMenu(false)}
-              >
-                系统通知 {unreadCount > 0 ? `(${unreadCount})` : ""}
-              </a>
+              <a href="/account?tab=records" className="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50" onClick={() => setShowMenu(false)}>提交记录</a>
               <a
                 href="/account?tab=profile"
                 className="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
@@ -186,6 +217,7 @@ export default function UserMenu() {
               >
                 我的收藏
               </a>
+              <a href="/account?tab=redeem" className="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50" onClick={() => setShowMenu(false)}>兑换会员</a>
               <a
                 href="/upload"
                 className="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"

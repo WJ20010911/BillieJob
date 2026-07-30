@@ -25,13 +25,18 @@ interface AIConfig {
   encryptionConfigured: boolean;
 }
 
+interface ManagedUser { id: number; identifier: string; nickname: string | null; membershipDays: number; createdAt: string; _count: { records: number; redemptionUses: number } }
+interface ManagedRecord { id: number; title: string; position: string; content: string; type: string; status: string; city: string; updatedAt: string }
+interface ManagedCompany { id: number; name: string; _count: { records: number }; records: ManagedRecord[] }
+interface RedemptionCode { id: number; code: string; membershipDays: number; maxUses: number; usedCount: number; active: boolean; createdAt: string }
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [records, setRecords] = useState<RecordItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("PENDING");
-  const [activeSection, setActiveSection] = useState<"audit" | "config">("audit");
+  const [activeSection, setActiveSection] = useState<"audit" | "content" | "users" | "codes" | "config">("audit");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [ocrConfigured, setOcrConfigured] = useState<boolean | null>(null);
   const [ocrKey, setOcrKey] = useState("");
@@ -42,6 +47,47 @@ export default function AdminDashboard() {
   const [aiSaving, setAISaving] = useState(false);
   const [aiTesting, setAITesting] = useState(false);
   const [aiMessage, setAIMessage] = useState("");
+  const [contentQuery, setContentQuery] = useState("");
+  const [companies, setCompanies] = useState<ManagedCompany[]>([]);
+  const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+  const [codes, setCodes] = useState<RedemptionCode[]>([]);
+  const [operationMessage, setOperationMessage] = useState("");
+  const [codeQuantity, setCodeQuantity] = useState(10);
+  const [codeDays, setCodeDays] = useState(7);
+  const [customDays, setCustomDays] = useState("");
+
+  const loadOperations = async (kind: "companies" | "users" | "codes", q = "") => {
+    setOperationMessage("");
+    const response = await fetch(`/api/admin/operations?kind=${kind}&q=${encodeURIComponent(q)}`);
+    if (response.status === 401) { router.push("/admin"); return; }
+    const data = await response.json();
+    if (!response.ok) { setOperationMessage(data.error || "加载失败"); return; }
+    if (kind === "companies") setCompanies(data.companies || []);
+    if (kind === "users") setManagedUsers(data.users || []);
+    if (kind === "codes") setCodes(data.codes || []);
+  };
+
+  const editRecord = async (record: ManagedRecord) => {
+    const title = prompt("记录标题", record.title); if (title === null) return;
+    const position = prompt("岗位名称", record.position); if (position === null) return;
+    const content = prompt("记录内容", record.content); if (content === null) return;
+    const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "updateRecord", id: record.id, title, position, content }) });
+    if (response.ok) { setOperationMessage("记录已更新"); void loadOperations("companies", contentQuery); } else setOperationMessage("更新失败");
+  };
+
+  const giftMembership = async (userId: number, preset?: number) => {
+    const raw = preset || Number(prompt("赠送会员天数（1-30）", "7"));
+    if (!Number.isInteger(raw) || raw < 1 || raw > 30) return;
+    const response = await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "giftMembership", userId, days: raw }) });
+    if (response.ok) { setOperationMessage("会员已赠送"); void loadOperations("users", contentQuery); } else setOperationMessage("赠送失败");
+  };
+
+  const createCodes = async () => {
+    const days = customDays ? Number(customDays) : codeDays;
+    const response = await fetch("/api/admin/operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "createCodes", quantity: codeQuantity, days, maxUses: 1 }) });
+    const data = await response.json();
+    if (response.ok) { setOperationMessage(`已生成 ${data.codes.length} 个单次兑换码`); void loadOperations("codes"); } else setOperationMessage(data.error || "生成失败");
+  };
 
   useEffect(() => {
     let active = true;
@@ -196,8 +242,19 @@ export default function AdminDashboard() {
 
       <div className="mb-6 flex border-b-2 border-slate-200">
         <button type="button" onClick={() => setActiveSection("audit")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "audit" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>审核</button>
+        <button type="button" onClick={() => { setActiveSection("content"); void loadOperations("companies", contentQuery); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "content" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>内容管理</button>
+        <button type="button" onClick={() => { setActiveSection("users"); void loadOperations("users", contentQuery); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "users" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>用户</button>
+        <button type="button" onClick={() => { setActiveSection("codes"); void loadOperations("codes"); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "codes" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>兑换码</button>
         <button type="button" onClick={() => setActiveSection("config")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "config" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>配置</button>
       </div>
+
+      {operationMessage ? <p className="mb-4 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-900">{operationMessage}</p> : null}
+
+      {activeSection === "content" ? <section className="space-y-4"><div className="flex gap-2"><input value={contentQuery} onChange={(event) => setContentQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void loadOperations("companies", contentQuery); }} placeholder="搜索公司名称" className="h-10 min-w-0 flex-1 border border-slate-300 px-3 text-sm" /><button onClick={() => void loadOperations("companies", contentQuery)} className="border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">搜索</button></div>{companies.map((company) => <div key={company.id} className="border border-slate-200 bg-white p-4"><div className="flex justify-between"><strong>{company.name}</strong><span className="text-xs text-slate-400">{company._count.records} 条记录</span></div><div className="mt-3 space-y-2">{company.records.map((record) => <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3"><div className="min-w-0"><p className="text-sm font-medium">{record.position || "未填写岗位"} · {record.title}</p><p className="line-clamp-1 text-xs text-slate-500">{record.content}</p></div><button onClick={() => void editRecord(record)} className="border border-slate-300 px-3 py-1.5 text-xs font-bold">编辑</button></div>)}</div></div>)}</section> : null}
+
+      {activeSection === "users" ? <section className="space-y-3"><div className="flex gap-2"><input value={contentQuery} onChange={(event) => setContentQuery(event.target.value)} placeholder="搜索账号或昵称" className="h-10 min-w-0 flex-1 border border-slate-300 px-3 text-sm" /><button onClick={() => void loadOperations("users", contentQuery)} className="border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">搜索</button></div>{managedUsers.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border border-slate-200 bg-white p-4"><div><strong className="text-sm">{item.nickname || item.identifier}</strong><p className="mt-1 text-xs text-slate-500">{item.identifier} · 会员 {item.membershipDays} 天 · 提交 {item._count.records} 条 · 已兑换 {item._count.redemptionUses} 次</p></div><div className="flex flex-wrap gap-1">{[1,3,7,14,30].map((day) => <button key={day} onClick={() => void giftMembership(item.id, day)} className="border border-cyan-300 px-2 py-1 text-xs text-cyan-800">+{day}天</button>)}<button onClick={() => void giftMembership(item.id)} className="border border-slate-400 px-2 py-1 text-xs">自定义</button></div></div>)}</section> : null}
+
+      {activeSection === "codes" ? <section><div className="border-2 border-slate-900 bg-white p-5"><h2 className="font-bold">批量生成推广兑换码</h2><div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm">数量<input type="number" min="1" max="200" value={codeQuantity} onChange={(event) => setCodeQuantity(Number(event.target.value))} className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><label className="text-sm">会员天数<select value={codeDays} onChange={(event) => { setCodeDays(Number(event.target.value)); setCustomDays(""); }} className="ml-2 h-10 border border-slate-300 px-2">{[1,3,7,14,30].map((day) => <option key={day} value={day}>{day}天</option>)}</select></label><label className="text-sm">自定义 1-30<input value={customDays} onChange={(event) => setCustomDays(event.target.value)} type="number" min="1" max="30" className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><button onClick={() => void createCodes()} className="h-10 border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">生成单次码</button></div></div><div className="mt-4 overflow-x-auto border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">兑换码</th><th>天数</th><th>使用情况</th><th>状态</th><th></th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t"><td className="p-3 font-mono font-medium">{code.code}</td><td>{code.membershipDays} 天</td><td>{code.usedCount}/{code.maxUses}</td><td>{code.active ? "可用" : "已作废"}</td><td><button onClick={async () => { await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "setCodeActive", id: code.id, active: !code.active }) }); void loadOperations("codes"); }} className="px-3 py-2 text-xs font-bold text-red-700">{code.active ? "作废" : "恢复"}</button></td></tr>)}</tbody></table></div></section> : null}
 
       {activeSection === "config" ? (
         <div className="space-y-6">
