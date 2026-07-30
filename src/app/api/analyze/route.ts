@@ -31,6 +31,11 @@ interface AnalysisResult {
   strengths: string[];
   cityReference?: CityReference;
   aiEnhanced?: boolean;
+  aiReview?: {
+    status: "complete" | "unavailable";
+    summary?: string;
+    differences: Array<{ fieldKey: string; ruleValue: string; aiValue: string }>;
+  };
 }
 
 const editableFieldKeys = new Set([
@@ -366,7 +371,25 @@ function normalizedForSourceCheck(value: string) {
   return value.replace(/[\s\u3000,，.。;；:：()（）\[\]【】"'“”‘’]/gu, "");
 }
 
+function buildAIReview(base: AnalysisResult, ai: AIAnalysisOutput, rawText: string): NonNullable<AnalysisResult["aiReview"]> {
+  const source = normalizedForSourceCheck(rawText);
+  const differences: NonNullable<AnalysisResult["aiReview"]>["differences"] = [];
+  for (const key of Object.keys(base.fields)) {
+    const candidate = ai.fields?.[key];
+    const aiValue = typeof candidate?.value === "string" ? candidate.value.trim() : "";
+    if (!aiValue || aiValue === "NOT_MENTIONED" || aiValue.length > 180 || !source.includes(normalizedForSourceCheck(aiValue))) continue;
+    const ruleValue = base.fields[key]?.value || WORDS.missing;
+    if (normalizedForSourceCheck(ruleValue) !== normalizedForSourceCheck(aiValue)) differences.push({ fieldKey: key, ruleValue, aiValue });
+  }
+  return {
+    status: "complete",
+    summary: typeof ai.summary === "string" ? ai.summary.trim().slice(0, 280) : "",
+    differences: differences.slice(0, 12),
+  };
+}
+
 function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput, rawText: string): AnalysisResult {
+  const aiReview = buildAIReview(base, ai, rawText);
   const fields = { ...base.fields };
   const source = normalizedForSourceCheck(rawText);
   for (const key of Object.keys(fields)) {
@@ -398,6 +421,7 @@ function mergeAIResult(base: AnalysisResult, ai: AIAnalysisOutput, rawText: stri
     findings: uniqueFindings,
     strengths,
     aiEnhanced: true,
+    aiReview,
   };
 }
 
@@ -447,23 +471,25 @@ export async function POST(request: NextRequest) {
     const rawText = typeof body.rawText === "string" ? body.rawText.trim() : "";
     if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
     const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
+    const aiPromise = callJobAnalysisAI(rawText).then((output) => ({ output, error: "" })).catch((error: unknown) => ({ output: null, error: error instanceof Error ? error.message : "AI 复核失败" }));
     const deterministicResult = analyzeText(rawText, companyName);
-    const learnedCorrections = await prisma.jobAnalysisCorrection.findMany({
-      where: { userId },
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-      select: { fieldKey: true, sourceValue: true, correctedValue: true, state: true },
-    });
+    const [learnedCorrections, aiOutcome] = await Promise.all([
+      prisma.jobAnalysisCorrection.findMany({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        select: { fieldKey: true, sourceValue: true, correctedValue: true, state: true },
+      }),
+      aiPromise,
+    ]);
     let result = applyLearnedCorrections(deterministicResult, rawText, learnedCorrections);
     let aiUsed = false;
-    try {
-      const aiResult = await callJobAnalysisAI(rawText);
-      if (aiResult) {
-        result = mergeAIResult(result, aiResult, rawText);
-        aiUsed = true;
-      }
-    } catch (error) {
-      console.error("AI analysis failed, using deterministic analysis:", error);
+    if (aiOutcome.output) {
+      result = mergeAIResult(result, aiOutcome.output, rawText);
+      aiUsed = true;
+    } else {
+      if (aiOutcome.error) console.error("AI analysis failed, using deterministic analysis:", aiOutcome.error);
+      result = { ...result, aiReview: { status: "unavailable", summary: aiOutcome.error || "AI 未配置或未返回结果", differences: [] } };
     }
     const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
     const item = await prisma.jobAnalysis.create({ data: { userId, title, companyName, source: typeof body.source === "string" ? body.source.trim() || null : null, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null, rawText, resultJson: JSON.stringify(result), riskScore: result.riskScore } });
