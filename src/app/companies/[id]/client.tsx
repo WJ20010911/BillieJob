@@ -96,6 +96,7 @@ export default function CompanyPageClient({
   const [allRecords] = useState<RecordData[]>(initialRecords);
   const [showContent, setShowContent] = useState(false);
   const [selectedCity, setSelectedCity] = useState(initialCity);
+  const [selectedPosition, setSelectedPosition] = useState("");
   const [showLogin, setShowLogin] = useState(false);
   const [loginInput, setLoginInput] = useState("");
   const [logging, setLogging] = useState(false);
@@ -137,6 +138,14 @@ export default function CompanyPageClient({
   const hasRecordsInCity = cityRecords.length > 0;
   const displayRecords = hasRecordsInCity ? cityRecords : allRecords;
   const availableCities = [...new Set(allRecords.map((record) => record.city).filter(Boolean))];
+  const positionOf = (record: RecordData) => record.position || record.actualPosition || "岗位未填写";
+  const availablePositions = [...new Set(displayRecords.map(positionOf))];
+  const positionRecords = selectedPosition ? displayRecords.filter((record) => positionOf(record) === selectedPosition) : displayRecords;
+  const recordsByPosition = positionRecords.reduce<Record<string, RecordData[]>>((groups, record) => {
+    const key = positionOf(record);
+    (groups[key] ||= []).push(record);
+    return groups;
+  }, {});
 
   const handleLogin = async () => {
     const trimmed = loginInput.trim();
@@ -379,16 +388,26 @@ export default function CompanyPageClient({
         </div>
       ) : null}
 
+      {availablePositions.length > 0 ? (
+        <div className="mb-6 border-y border-slate-100 py-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="mr-1 text-sm text-slate-500">岗位分类：</span>
+            <button type="button" onClick={() => setSelectedPosition("")} className={`border px-3 py-1.5 text-sm transition ${!selectedPosition ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}>全部</button>
+            {availablePositions.map((position) => <button key={position} type="button" onClick={() => setSelectedPosition(position)} className={`border px-3 py-1.5 text-sm transition ${selectedPosition === position ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}>{position}</button>)}
+          </div>
+        </div>
+      ) : null}
+
       <h2 className="mb-4 text-lg font-semibold text-slate-950">
         用户记录
-        <span className="ml-2 text-sm font-normal text-slate-400">({displayRecords.length} 条)</span>
+        <span className="ml-2 text-sm font-normal text-slate-400">({positionRecords.length} 条)</span>
       </h2>
 
-      {!showContent && displayRecords.length > 0 ? (
+      {!showContent && positionRecords.length > 0 ? (
         <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-8 text-center">
           <h3 className="text-lg font-semibold text-slate-950">查看完整记录</h3>
           <p className="mt-2 text-sm text-slate-500">
-            看完广告后可继续查看全部 {displayRecords.length} 条记录；会员可直接跳过。
+            看完广告后可继续查看全部 {positionRecords.length} 条记录；会员可直接跳过。
           </p>
           <div className="mt-5 flex justify-center gap-3">
             <button
@@ -409,7 +428,7 @@ export default function CompanyPageClient({
       ) : null}
 
       <div className="space-y-4">
-        {displayRecords.length === 0 ? (
+        {positionRecords.length === 0 ? (
           <div className="py-12 text-center text-slate-400">
             <p>暂时还没有用户记录</p>
             <a href="/upload" className="mt-3 inline-block text-sm text-slate-900 hover:underline">
@@ -417,7 +436,7 @@ export default function CompanyPageClient({
             </a>
           </div>
         ) : showContent ? (
-          displayRecords.map((record) => <RecordCard key={record.id} record={record} />)
+          Object.entries(recordsByPosition).map(([position, records]) => <section key={position} className="border-t border-slate-200 pt-5 first:border-t-0 first:pt-0"><div className="mb-3 flex items-center gap-3"><h3 className="text-base font-semibold text-slate-950">{position}</h3><span className="text-xs text-slate-400">{records.length} 条记录</span></div><div className="space-y-4">{records.map((record) => <RecordCard key={record.id} record={record} />)}</div></section>)
         ) : null}
       </div>
 

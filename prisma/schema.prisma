@@ -56,12 +56,17 @@ model Record {
   content     String  // 文本内容/描述
   images      String  @default("[]") // 图片路径 JSON array
   rating      Int?    // 用户评分 1-5 星
+  position    String  @default("") // 招聘岗位，用于公司页分类
 
   // 面试经历专用字段
   actualPosition  String? // 实际岗位
   salaryRange     String? // 薪资范围
   workContent     String? // 工作内容
   isConsistentWithJD Boolean? // 是否与JD相符
+  isSalaryConsistent Boolean? // 招聘薪资与实际是否相符
+  actualSalary     String? // 用户确认的实际薪资
+  isWorkContentConsistent Boolean? // 招聘工作内容与实际是否相符
+  actualWorkContent String? // 用户确认的实际工作内容
 
   // 审核状态
   status      String  @default("PENDING") // PENDING | APPROVED | REJECTED
@@ -82,6 +87,7 @@ model Record {
   @@index([userId])
   @@index([status])
   @@index([city])
+  @@index([companyId, position])
   favoriteRecords FavoriteRecord[]
   browseHistory BrowseHistory[]
 }

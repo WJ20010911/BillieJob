@@ -21,6 +21,10 @@ interface SectionState {
   salaryRange: string;
   workContent: string;
   isConsistentWithJD: string;
+  isSalaryConsistent: string;
+  actualSalary: string;
+  isWorkContentConsistent: string;
+  actualWorkContent: string;
   images: string[];
   submitting: boolean;
   done: boolean;
@@ -39,10 +43,10 @@ const sectionConfig: {
   {
     key: "JD_SNAPSHOT",
     mark: "JD",
-    label: "招聘 JD",
-    description: "先记录招聘信息和岗位要求",
-    titlePlaceholder: "例如：招聘写开发，实际工作以销售为主",
-    contentPlaceholder: "写下 JD 中最重要的描述，以及入职或面试后发现的实际情况。",
+    label: "招聘信息",
+    description: "上传招聘截图或粘贴招聘原文",
+    titlePlaceholder: "自动按岗位生成",
+    contentPlaceholder: "粘贴招聘原文，或说明截图中写明的岗位、薪资、工作内容和要求。",
   },
   {
     key: "CHAT_SCREENSHOT",
@@ -70,6 +74,10 @@ const emptySection = (): SectionState => ({
   salaryRange: "",
   workContent: "",
   isConsistentWithJD: "",
+  isSalaryConsistent: "",
+  actualSalary: "",
+  isWorkContentConsistent: "",
+  actualWorkContent: "",
   images: [],
   submitting: false,
   done: false,
@@ -184,6 +192,7 @@ export default function UploadPage() {
   const [loginError, setLoginError] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [city, setCity] = useState("");
+  const [position, setPosition] = useState("");
   const [activeType, setActiveType] = useState<RecordType>("JD_SNAPSHOT");
   const [sections, setSections] = useState(initialSections);
   const [formError, setFormError] = useState("");
@@ -242,12 +251,14 @@ export default function UploadPage() {
 
   const submitActiveSection = async () => {
     const company = companyName.trim();
-    const title = activeSection.title.trim();
+    const jobPosition = position.trim();
+    const title = activeType === "JD_SNAPSHOT" ? `招聘信息：${jobPosition}` : activeSection.title.trim();
     const content = activeSection.content.trim();
     setFormError("");
     setSuccessMessage("");
     if (!company) return setFormError("请先填写公司名称");
     if (!city) return setFormError("请选择所在城市");
+    if (!jobPosition) return setFormError("请填写招聘岗位");
     if (!title) return setFormError("请给这条记录写一个标题");
     if (content.length < 10) return setFormError("详细内容至少填写 10 个字，让这条记录对别人有帮助");
     if (!activeSection.rating) return setFormError("请先选择 1-5 星评分");
@@ -261,6 +272,7 @@ export default function UploadPage() {
           type: activeType,
           companyName: company,
           city,
+          position: jobPosition,
           userId: user?.id,
           title,
           content,
@@ -275,6 +287,10 @@ export default function UploadPage() {
               : activeSection.isConsistentWithJD === "no"
               ? false
               : undefined,
+          isSalaryConsistent: activeSection.isSalaryConsistent === "yes" ? true : activeSection.isSalaryConsistent === "no" ? false : undefined,
+          actualSalary: activeSection.actualSalary || undefined,
+          isWorkContentConsistent: activeSection.isWorkContentConsistent === "yes" ? true : activeSection.isWorkContentConsistent === "no" ? false : undefined,
+          actualWorkContent: activeSection.actualWorkContent || undefined,
         }),
       });
       const data = await response.json();
@@ -352,7 +368,7 @@ export default function UploadPage() {
                 <p className="mt-1 text-sm text-slate-500">公司和城市只需填写一次，下面的记录会自动共用。</p>
               </div>
             </div>
-            <div className="mt-6 grid gap-5 sm:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="mt-6 grid gap-5 sm:grid-cols-3">
               <label className="block">
                 <span className="text-sm font-medium text-slate-800">公司名称 <em className="not-italic text-red-500">*</em></span>
                 <input
@@ -366,6 +382,10 @@ export default function UploadPage() {
               <label className="block">
                 <span className="text-sm font-medium text-slate-800">所在城市 <em className="not-italic text-red-500">*</em></span>
                 <div className="mt-2"><CityPicker value={city} onChange={setCity} /></div>
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">招聘岗位 <em className="not-italic text-red-500">*</em></span>
+                <input type="text" value={position} onChange={(event) => setPosition(event.target.value)} placeholder="例如：售后客服" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" />
               </label>
             </div>
           </section>
@@ -414,7 +434,7 @@ export default function UploadPage() {
                 <div className="mt-6 border border-emerald-200 bg-emerald-50/70 p-5 text-sm leading-6 text-emerald-800">这条记录已经提交，审核通过后会出现在公司页面。你可以选择上方其他类型继续补充。</div>
               ) : (
                 <div className="mt-6 space-y-6">
-                  <label className="block">
+                  {activeType !== "JD_SNAPSHOT" ? <label className="block">
                     <span className="text-sm font-medium text-slate-800">一句话标题 <em className="not-italic text-red-500">*</em></span>
                     <input
                       type="text"
@@ -423,7 +443,7 @@ export default function UploadPage() {
                       placeholder={activeConfig.titlePlaceholder}
                       className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900"
                     />
-                  </label>
+                  </label> : <div className="border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">招聘信息会以“招聘信息：{position || "岗位"}”作为标题保存。</div>}
                   <label className="block">
                     <span className="text-sm font-medium text-slate-800">详细内容 <em className="not-italic text-red-500">*</em></span>
                     <textarea
@@ -461,21 +481,22 @@ export default function UploadPage() {
                     </div>
                   </div>
 
-                  {activeType === "INTERVIEW_EXPERIENCE" ? (
+                  {activeType === "JD_SNAPSHOT" ? (
                     <div className="space-y-6 border-t border-slate-200 pt-6">
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <label className="block"><span className="text-sm font-medium text-slate-800">实际岗位</span><input type="text" value={activeSection.actualPosition} onChange={(event) => updateActiveSection({ actualPosition: event.target.value })} placeholder="例如：Java 后端开发" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label>
-                        <label className="block"><span className="text-sm font-medium text-slate-800">薪资范围</span><input type="text" value={activeSection.salaryRange} onChange={(event) => updateActiveSection({ salaryRange: event.target.value })} placeholder="例如：8K-13K" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label>
+                        <label className="block"><span className="text-sm font-medium text-slate-800">招聘薪资</span><input type="text" value={activeSection.salaryRange} onChange={(event) => updateActiveSection({ salaryRange: event.target.value })} placeholder="例如：5K-9K" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label>
+                        <div><span className="text-sm font-medium text-slate-800">薪资是否与实际相符</span><div className="mt-3 flex gap-3">{[{ value: "yes", label: "相符" }, { value: "no", label: "不相符" }].map((option) => <button key={option.value} type="button" onClick={() => updateActiveSection({ isSalaryConsistent: option.value })} className={`rounded-full border px-5 py-2 text-sm transition ${activeSection.isSalaryConsistent === option.value ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}>{option.label}</button>)}</div></div>
                       </div>
-                      <label className="block"><span className="text-sm font-medium text-slate-800">实际工作内容</span><input type="text" value={activeSection.workContent} onChange={(event) => updateActiveSection({ workContent: event.target.value })} placeholder="例如：除了开发，还需要承担销售和运维" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label>
+                      {activeSection.isSalaryConsistent === "no" ? <label className="block"><span className="text-sm font-medium text-slate-800">实际薪资</span><input type="text" value={activeSection.actualSalary} onChange={(event) => updateActiveSection({ actualSalary: event.target.value })} placeholder="例如：底薪 3K + 绩效，实际约 4K" className="mt-2 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label> : null}
                       <div>
-                        <span className="text-sm font-medium text-slate-800">实际工作与 JD 是否相符</span>
+                        <span className="text-sm font-medium text-slate-800">招聘工作内容是否与实际相符</span>
                         <div className="mt-3 flex gap-3">
                           {[{ value: "yes", label: "相符" }, { value: "no", label: "不相符" }].map((option) => (
-                            <button key={option.value} type="button" onClick={() => updateActiveSection({ isConsistentWithJD: option.value })} className={`rounded-full border px-5 py-2 text-sm transition ${activeSection.isConsistentWithJD === option.value ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}>{option.label}</button>
+                            <button key={option.value} type="button" onClick={() => updateActiveSection({ isWorkContentConsistent: option.value })} className={`rounded-full border px-5 py-2 text-sm transition ${activeSection.isWorkContentConsistent === option.value ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-slate-400"}`}>{option.label}</button>
                           ))}
                         </div>
                       </div>
+                      {activeSection.isWorkContentConsistent === "no" ? <label className="block"><span className="text-sm font-medium text-slate-800">实际工作内容</span><textarea value={activeSection.actualWorkContent} onChange={(event) => updateActiveSection({ actualWorkContent: event.target.value })} rows={4} placeholder="写下实际增加、替换或隐瞒的工作内容" className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-900" /></label> : null}
                     </div>
                   ) : null}
 

@@ -4,12 +4,12 @@ import { prisma } from "@/lib/prisma";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, companyName, city, title, content, images, rating, actualPosition, salaryRange, workContent, isConsistentWithJD, userId } = body;
+    const { type, companyName, city, position, title, content, images, rating, actualPosition, salaryRange, workContent, isConsistentWithJD, isSalaryConsistent, actualSalary, isWorkContentConsistent, actualWorkContent, userId } = body;
 
     // Validate required fields
-    if (!type || !companyName || !city || !title || !content) {
+    if (!type || !companyName || !city || !position || !title || !content) {
       return NextResponse.json(
-        { error: "请填写必要字段（类型、公司名称、城市、标题、内容）" },
+        { error: "请填写必要字段（类型、公司名称、城市、岗位、标题、内容）" },
         { status: 400 }
       );
     }
@@ -47,10 +47,15 @@ export async function POST(request: NextRequest) {
         images: JSON.stringify(images || []),
         rating,
         city: city || "",
+        position: position.trim().slice(0, 80),
         actualPosition: actualPosition || null,
         salaryRange: salaryRange || null,
         workContent: workContent || null,
         isConsistentWithJD: isConsistentWithJD !== undefined ? isConsistentWithJD : null,
+        isSalaryConsistent: isSalaryConsistent !== undefined ? isSalaryConsistent : null,
+        actualSalary: actualSalary || null,
+        isWorkContentConsistent: isWorkContentConsistent !== undefined ? isWorkContentConsistent : null,
+        actualWorkContent: actualWorkContent || null,
         status: "PENDING",
         userId: userId ? parseInt(userId) : null,
       },

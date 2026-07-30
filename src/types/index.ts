@@ -26,10 +26,15 @@ export interface RecordData {
   content: string;
   images: string[];
   rating: number | null;
+  position: string;
   actualPosition: string | null;
   salaryRange: string | null;
   workContent: string | null;
   isConsistentWithJD: boolean | null;
+  isSalaryConsistent: boolean | null;
+  actualSalary: string | null;
+  isWorkContentConsistent: boolean | null;
+  actualWorkContent: string | null;
   status: RecordStatus;
   rejectReason: string | null;
   isReported: boolean;
@@ -58,10 +63,15 @@ export interface RecordFormData {
   content: string;
   images: string[];
   city: string;
+  position: string;
   actualPosition?: string;
   salaryRange?: string;
   workContent?: string;
   isConsistentWithJD?: boolean;
+  isSalaryConsistent?: boolean;
+  actualSalary?: string;
+  isWorkContentConsistent?: boolean;
+  actualWorkContent?: string;
 }
 
 export interface UserBenefitData {

@@ -224,7 +224,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const requirementsValue = (labeledValue(text, requirementPattern, /\u5de5\u4f5c\u5185\u5bb9|\u5c97\u4f4d\u804c\u8d23|\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u6bcf\u65e5|\u6bcf\u5468|\u798f\u5229|\u85aa\u8d44|\u5de5\u4f5c\u5730\u70b9|\u4e94\u9669|\u53cc\u4f11|\u5355\u4f11|\u5927\u5c0f\u5468|\u5012\u73ed|\u4efb\u52a1\u8981\u6c42/u) || firstMatch(text, requirementPattern)).replace(/^(?:\u5c97\u4f4d\u8981\u6c42|\u4efb\u804c\u8981\u6c42|\u804c\u4f4d\u5173\u952e\u8bcd)\s*/u, "");
   fields.requirements = { value: requirementsValue || WORDS.missing, state: requirementsValue ? "found" : "missing" };
 
-  const clockRange = /\d{1,2}:\d{2}\s*[-~\u81f3\u5230]\s*\d{1,2}:\d{2}/u;
+  const clockRange = /\d{1,2}:\d{2}\s*(?:\u70b9)?\s*[-~\u81f3\u5230]\s*\d{1,2}:\d{2}\s*(?:\u70b9)?/u;
   const labeledWorkTime = capture(text, /(?:\u5de5\u4f5c\u65f6\u95f4|\u4e0a\u73ed\u65f6\u95f4|\u73ed\u6b21)[\s:：]*([0-2]?\d(?::[0-5]\d)?\s*[-~\u81f3\u5230]\s*[0-2]?\d(?::[0-5]\d)?)/u);
   const workTimeValue = labeledWorkTime || firstMatch(text, clockRange) || firstMatch(text, /\u671d\u4e5d\u665a\u516d|\u65e9\u4e5d\u665a\u516d/u);
   fields.workTime = { value: workTimeValue || WORDS.missing, state: workTimeValue ? "found" : "missing" };
@@ -232,7 +232,7 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
 
   const dailyHoursMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:\u5c0f\u65f6|h)(?:\s*\/\s*(?:\u5929|\u65e5))?|(?:\u6bcf\u5929|\u6bcf\u65e5)\s*(\d+(?:\.\d+)?)\s*(?:\u5c0f\u65f6|h)/iu);
   const dailyHoursValue = firstMatch(text, /(?:\u6bcf\u5929|\u6bcf\u65e5|\u65e5\u5747)\s*\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)|\d+(?:\.\d+)?\s*(?:\u5c0f\u65f6|h)\s*\/\s*(?:\u5929|\u65e5)|\d+(?:\.\d+)?\s*\u5c0f\u65f6\u5de5\u4f5c\u5236/iu);
-  const workTimeMatch = workTimeValue.match(/(\d{1,2}(?::\d{2})?)\s*[-~\u81f3\u5230]\s*(\d{1,2}(?::\d{2})?)/u);
+  const workTimeMatch = workTimeValue.match(/(\d{1,2}(?::\d{2})?)\s*(?:\u70b9)?\s*[-~\u81f3\u5230]\s*(\d{1,2}(?::\d{2})?)\s*(?:\u70b9)?/u);
   const inferredDailyHours = workTimeMatch ? (() => {
     const start = timeToHours(workTimeMatch[1]);
     let end = timeToHours(workTimeMatch[2]);
