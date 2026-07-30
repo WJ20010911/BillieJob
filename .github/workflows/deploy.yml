@@ -14,7 +14,23 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy on Lighthouse
+      - name: Check out deployment source
+        uses: actions/checkout@v4
+
+      - name: Package application
+        run: tar --exclude=.git --exclude=node_modules --exclude=.next --exclude=dev.db --exclude=.env.local -czf billiejob-deploy.tar.gz .
+
+      - name: Upload application package
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: billiejob-deploy.tar.gz
+          target: /tmp
+
+      - name: Build and restart on Lighthouse
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -25,10 +41,8 @@ jobs:
           script: |
             set -e
             cd /var/www/BillieJob
-            # Next.js updates this generated declaration during builds; it must
-            # not prevent a later fast-forward deployment.
-            git restore next-env.d.ts
-            git pull --ff-only origin main
+            tar -xzf /tmp/billiejob-deploy.tar.gz -C /var/www/BillieJob
+            rm -f /tmp/billiejob-deploy.tar.gz
             npm ci
             npx prisma generate
             npx prisma db push
