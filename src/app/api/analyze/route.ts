@@ -137,6 +137,7 @@ function cityReference(city: string, salary: string): CityReference | undefined 
 interface CompensationStage {
   fixed: number;
   detail: string;
+  monthlyNight: number;
   mealPerDay: number;
   overnightNight: number;
 }
@@ -146,13 +147,13 @@ function compensationStage(segment: string): CompensationStage | undefined {
   const base = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)/u) || capture(segment, /(?:\u57fa\u672c\u5de5\u8d44|\u65e0\u8d23\u5e95\u85aa|\u5e95\u85aa)[\s:：+]*([0-9]+(?:\.\d+)?)/u) || 0);
   const performance = Number(capture(segment, /(\d+(?:\.\d+)?)\s*(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)/u) || capture(segment, /(?:\u7ee9\u6548\u5956\u91d1|\u7ee9\u6548\u5de5\u8d44|\u7ee9\u6548)[\s:：+]*([0-9]+(?:\.\d+)?)/u) || 0);
   const mealPerDay = Number(capture(segment, /\u9910\u8865[^\d]{0,8}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u5929|\u65e5)/u) || 0);
-  const monthlyNight = Number(capture(segment, /(?:\u5c97\u8865|\u591c\u73ed\u8865\u8d34)[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*\u6708/u) || 0);
-  const overnightNight = Number(capture(segment, /\u591c\u73ed\u8865\u8d34[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u665a|\u591c)/u) || 0);
+  const monthlyNight = Number(capture(segment, /(?:(?:\u901a\u5bb5\u73ed)?\u5c97\u8865|\u591c\u73ed\u5c97\u8865|\u591c\u73ed\u8865\u8d34)[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*\u6708/u) || 0);
+  const overnightNight = Number(capture(segment, /(?:(?:\u901a\u5bb5\u73ed)?\u591c\u73ed\u8865\u8d34|\u901a\u5bb5\u8865\u8d34)[^\d]{0,12}(\d+(?:\.\d+)?)\s*\u5143?\s*\/?\s*(?:\u665a|\u591c)/u) || 0);
   const fixed = base + performance + monthlyNight;
   if (!fixed && !mealPerDay && !overnightNight) return undefined;
   const items = [base ? `\u57fa\u672c\u5de5\u8d44 ${base} \u5143` : "", performance ? `\u7ee9\u6548 ${performance} \u5143` : "", monthlyNight ? `\u591c\u73ed\u5c97\u8865 ${monthlyNight} \u5143/\u6708` : ""].filter(Boolean);
   const variable = [mealPerDay ? `\u9910\u8865 ${mealPerDay} \u5143/\u5de5\u4f5c\u65e5` : "", overnightNight ? `\u901a\u5bb5\u591c\u73ed\u8865\u8d34 ${overnightNight} \u5143/\u665a` : ""].filter(Boolean);
-  return { fixed, mealPerDay, overnightNight, detail: `\u56fa\u5b9a ${fixed} \u5143/\u6708\uff08${items.join(" + ")}\uff09${variable.length ? `\uff1b\u53e6\u6709 ${variable.join(" + ")}` : ""}` };
+  return { fixed, monthlyNight, mealPerDay, overnightNight, detail: `\u56fa\u5b9a ${fixed} \u5143/\u6708\uff08${items.join(" + ")}\uff09${variable.length ? `\uff1b\u53e6\u6709 ${variable.join(" + ")}` : ""}` };
 }
 
 function monthlyIndividualIncomeTax(amount: number) {
@@ -272,12 +273,6 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   fields.regularCompensation = { value: regularStage?.detail || WORDS.missing, state: regularStage ? "found" : "missing" };
   const afterTaxStages = [probationStage ? `\u8bd5\u7528\u671f\u4e2a\u7a0e\u540e\u56fa\u5b9a\u7ea6 ${Math.round(probationStage.fixed - monthlyIndividualIncomeTax(probationStage.fixed))} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u4e2a\u7a0e\u540e\u56fa\u5b9a\u7ea6 ${Math.round(regularStage.fixed - monthlyIndividualIncomeTax(regularStage.fixed))} \u5143/\u6708` : ""].filter(Boolean);
   fields.afterTaxIncome = { value: afterTaxStages.length ? `${afterTaxStages.join("\uff1b")}\uff08\u672a\u6263\u793e\u4fdd/\u516c\u79ef\u91d1\uff0c\u9910\u8865\u4e0e\u6309\u665a\u8865\u8d34\u53e6\u8ba1\uff09` : WORDS.missing, state: afterTaxStages.length ? "unclear" : "missing" };
-  const stagedSalaryRange = [probationStage ? `\u8bd5\u7528\u671f\u56fa\u5b9a ${probationStage.fixed} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u540e\u56fa\u5b9a ${regularStage.fixed} \u5143/\u6708` : ""].filter(Boolean).join("\uff1b");
-  if (stagedSalaryRange) {
-    fields.salary = { value: stagedSalaryRange, state: "unclear" };
-    fields.salaryRange = { value: stagedSalaryRange, state: "unclear" };
-  }
-  const cityLiving = cityReference(locationValue, String(regularStage?.fixed || probationStage?.fixed || salaryNumber));
   const taskRequirementValue = firstMatch(text, /\u6ca1\u6709\u4efb\u52a1\u8981\u6c42|\u65e0\u4efb\u52a1\u8981\u6c42|\u4e0d\u8bbe\u4efb\u52a1|\u65e0\u4e1a\u7ee9\u8981\u6c42|\u4e0d\u8003\u6838|\u4efb\u52a1\u6307\u6807[^\u3002\uff1b;.!?\uff01\uff1f]{0,40}/u);
   fields.taskRequirement = { value: taskRequirementValue || WORDS.missing, state: taskRequirementValue ? "found" : "missing" };
 
@@ -286,9 +281,13 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const mealAmount = capture(text, /(?:\u9910\u8865|\u996d\u8865|\u9965\u98df\u8865\u8d34|\u9910\u8d39\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
   const transportAmount = capture(text, /(?:\u4ea4\u901a\u8865\u8d34|\u8f66\u8865|\u4ea4\u901a\u8d39|\u8f66\u8d39\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
   const housingAmount = capture(text, /(?:\u623f\u8865|\u4f4f\u623f\u8865\u8d34|\u4f4f\u5bbf\u8865\u8d34)[\s:：]*([0-9]+(?:\.\d+)?\s*(?:[kK]|\u4e07|\u5343|\u5143)?)/u);
-  const monthlyAllowanceValue = monthlyAllowanceAmount ? `每月补贴 ${amountWithUnit(monthlyAllowanceAmount)}` : "";
-  const dailyAllowanceValue = dailyAllowanceAmount ? `每天补贴 ${amountWithUnit(dailyAllowanceAmount)}` : "";
-  const mealValue = mealAmount ? `食补 ${amountWithUnit(mealAmount)}` : "";
+  const stageMonthlyNight = Math.max(probationStage?.monthlyNight || 0, regularStage?.monthlyNight || 0);
+  const stageMealPerDay = Math.max(probationStage?.mealPerDay || 0, regularStage?.mealPerDay || 0);
+  const stageOvernightNight = Math.max(probationStage?.overnightNight || 0, regularStage?.overnightNight || 0);
+  const monthlyAllowanceValue = monthlyAllowanceAmount ? `每月补贴 ${amountWithUnit(monthlyAllowanceAmount)}` : stageMonthlyNight ? `夜班岗补 ${stageMonthlyNight} 元/月` : "";
+  const dailyAllowanceItems = [dailyAllowanceAmount ? `每天补贴 ${amountWithUnit(dailyAllowanceAmount)}` : "", stageMealPerDay ? `餐补 ${stageMealPerDay} 元/工作日` : "", stageOvernightNight ? `通宵夜班补贴 ${stageOvernightNight} 元/晚` : ""].filter(Boolean);
+  const dailyAllowanceValue = dailyAllowanceItems.join(" + ");
+  const mealValue = mealAmount ? `食补 ${amountWithUnit(mealAmount)}` : stageMealPerDay ? `食补 ${stageMealPerDay} 元/工作日` : "";
   const transportValue = transportAmount ? `交通补贴 ${amountWithUnit(transportAmount)}` : "";
   const housingValue = housingAmount ? `房补 ${amountWithUnit(housingAmount)}` : "";
   const bonusValue = firstMatch(text, /\u5e74\u7ec8\u5956|\u5e74\u5ea6\u5956\u91d1|\u5341\u4e09\u85aa|\u5341\u56db\u85aa/u);
@@ -309,6 +308,16 @@ function analyzeText(rawText: string, companyName?: string | null): AnalysisResu
   const regularGross = regularStage ? stageGross(regularStage) : 0;
   const grossStages = [probationStage ? `\u8bd5\u7528\u671f\u7a0e\u524d\u7ea6 ${Math.round(probationGross)} \u5143/\u6708` : "", regularStage ? `\u8f6c\u6b63\u540e\u7a0e\u524d\u7ea6 ${Math.round(regularGross)} \u5143/\u6708` : ""].filter(Boolean);
   fields.estimatedGross = { value: grossStages.length ? `${grossStages.join("\uff1b")}\uff08\u6309${scheduledDays || "\u672a\u77e5"}\u4e2a\u5de5\u4f5c\u65e5/\u6708\u3001\u9910\u8865\u4e0e\u901a\u5bb5\u73ed\u8865\u8d34\u8ba1\u5165\uff09` : WORDS.missing, state: grossStages.length && scheduledDays ? "unclear" : "missing" };
+  const salaryStageLabel = (name: string, stage: CompensationStage) => {
+    const variable = [stage.mealPerDay ? `\u9910\u8865 ${stage.mealPerDay} \u5143/\u5de5\u4f5c\u65e5` : "", stage.overnightNight ? `\u901a\u5bb5\u591c\u73ed\u8865\u8d34 ${stage.overnightNight} \u5143/\u665a` : ""].filter(Boolean).join(" + ");
+    return scheduledDays ? `${name}\u7ea6 ${Math.round(stageGross(stage))} \u5143/\u6708\uff08\u56fa\u5b9a ${stage.fixed} + \u6309 ${scheduledDays} \u4e2a\u5de5\u4f5c\u65e5\u4f30\u7b97\u8865\u8d34\uff09` : `${name}\u56fa\u5b9a ${stage.fixed} \u5143/\u6708${variable ? `\uff1b\u53e6\u6709 ${variable}` : ""}`;
+  };
+  const stagedSalaryRange = [probationStage ? salaryStageLabel("\u8bd5\u7528\u671f", probationStage) : "", regularStage ? salaryStageLabel("\u8f6c\u6b63\u540e", regularStage) : ""].filter(Boolean).join("\uff1b");
+  if (stagedSalaryRange) {
+    fields.salary = { value: stagedSalaryRange, state: "unclear" };
+    fields.salaryRange = { value: stagedSalaryRange, state: "unclear" };
+  }
+  const cityLiving = cityReference(locationValue, String(regularGross || probationGross || regularStage?.fixed || probationStage?.fixed || salaryNumber));
   const takeHomeStages = socialValue && CITY_REFERENCE[locationValue] ? [probationStage ? `\u8bd5\u7528\u671f\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, probationGross, withHousingFund)}` : "", regularStage ? `\u8f6c\u6b63\u540e\u9884\u4f30\u5230\u624b ${takeHomeEstimate(locationValue, regularGross, withHousingFund)}` : ""].filter(Boolean) : [];
   fields.estimatedTakeHome = { value: takeHomeStages.length ? takeHomeStages.join("\uff1b") : WORDS.missing, state: takeHomeStages.length ? "unclear" : "missing" };
 
