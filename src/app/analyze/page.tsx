@@ -257,7 +257,7 @@ export default function AnalyzePage() {
       return;
     }
     setAnalyzing(true);
-    setMessage(mode === "ai" ? "AI 正在复核招聘信息，免费模型可能需要较长时间，最长等待 3 分钟。" : "正在使用规则引擎分析招聘信息...");
+    setMessage(mode === "ai" ? "AI 正在复核招聘信息。模型能力有限，可能遗漏或误判；可点击“复制招聘要求和 AI 提示词”交给其他模型复核。最长等待 3 分钟。" : "正在使用规则引擎分析招聘信息...");
     try {
       const response = await fetch("/api/analyze", {
         method: "POST",
@@ -402,7 +402,6 @@ export default function AnalyzePage() {
           </div>
           <label className="mt-4 block text-sm font-semibold text-slate-800">来源平台（可选）<input value={source} onChange={(event) => setSource(event.target.value)} placeholder="例如：BOSS 直聘、猎聘、微信群" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
           <label className="mt-4 block text-sm font-semibold text-slate-800">招聘文字 <span className="font-normal text-slate-400">（必填，截图识别/复制后粘贴）</span><textarea value={rawText} onChange={(event) => setRawText(event.target.value)} rows={8} placeholder="把截图中的职位名称、职责、薪资、工作地点、要求等文字粘贴到这里，系统会按字段分析..." className="mt-2 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm font-normal leading-6 outline-none focus:border-cyan-600" /></label>
-          <button type="button" onClick={() => void copyExternalReviewPrompt()} disabled={!rawText.trim()} className="mt-4 border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 disabled:opacity-50">复制招聘要求和 AI 提示词</button>
         </section>
 
         <aside className="h-fit border-2 border-slate-200 bg-white p-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
@@ -411,7 +410,8 @@ export default function AnalyzePage() {
           <p className="mt-2 text-xs leading-5 text-slate-500">上传截图后先识别文字；确认左侧内容后开始分析。</p>
           <div className="mt-5 space-y-3">
             <button type="button" onClick={() => void runAnalysis("rules")} disabled={analyzing || uploading} className="inline-flex h-12 w-full items-center justify-center border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white shadow-[0_5px_0_#0f172a] transition hover:bg-cyan-700 active:translate-y-1 active:shadow-none disabled:cursor-wait disabled:opacity-60">{analyzing ? "正在分析..." : "普通分析（快速）"}</button>
-            <button type="button" onClick={() => void runAnalysis("ai")} disabled={analyzing || uploading} className="inline-flex min-h-12 w-full flex-col items-center justify-center border-2 border-violet-700 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 transition hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"><span>{analyzing ? "正在分析..." : "AI 分析"}</span><span className="mt-0.5 text-[11px] font-medium text-violet-700">AI 复核，最长等待 3 分钟</span></button>
+            <button type="button" onClick={() => void runAnalysis("ai")} disabled={analyzing || uploading} className="inline-flex min-h-12 w-full flex-col items-center justify-center border-2 border-violet-700 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 transition hover:bg-violet-100 disabled:cursor-wait disabled:opacity-60"><span>{analyzing ? "正在分析..." : "AI 分析"}</span><span className="mt-0.5 text-center text-[11px] font-medium leading-4 text-violet-700">可能遗漏信息，最长等待 3 分钟</span></button>
+            <button type="button" onClick={() => void copyExternalReviewPrompt()} disabled={!rawText.trim()} className="inline-flex min-h-11 w-full flex-col items-center justify-center border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"><span>复制招聘要求和 AI 提示词</span><span className="mt-0.5 text-center text-[11px] font-medium leading-4 text-violet-700">可发给其他模型进一步复核</span></button>
             <button type="button" onClick={() => void runOcr()} disabled={!imageFile || ocrLoading} className="inline-flex h-11 w-full items-center justify-center border-2 border-cyan-700 bg-cyan-50 px-4 text-sm font-bold text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40">{ocrLoading ? "识别中..." : "识别截图文字"}</button>
             <button type="button" onClick={clearDraft} disabled={analyzing || uploading} className="inline-flex h-10 w-full items-center justify-center border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-red-300 hover:text-red-700 disabled:opacity-50">清空本次输入</button>
           </div>
