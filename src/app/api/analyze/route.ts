@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { callJobAnalysisAI, type AIAnalysisOutput } from "@/lib/ai-analysis";
+import { findSimilarRecords } from "@/lib/job-similarity";
 
 type FindingLevel = "high" | "medium" | "low";
 type FieldState = "found" | "missing" | "unclear";
@@ -512,12 +513,13 @@ export async function POST(request: NextRequest) {
     const rawText = typeof body.rawText === "string" ? body.rawText.trim() : "";
     if (rawText.length < 12) return NextResponse.json({ error: "\u8bf7\u8865\u5145\u81f3\u5c11 12 \u4e2a\u5b57\u7684\u62db\u8058\u6587\u5b57" }, { status: 400 });
     const companyName = typeof body.companyName === "string" ? body.companyName.trim() || null : null;
+    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
     const analysisMode = body.analysisMode === "ai" ? "ai" : "rules";
     const aiPromise = analysisMode === "ai"
       ? callJobAnalysisAI(rawText, 180000).then((output) => ({ output, error: "" })).catch((error: unknown) => ({ output: null, error: error instanceof Error ? error.message : "AI 复核失败" }))
       : Promise.resolve(null);
     const deterministicResult = analyzeText(rawText, companyName);
-    const [learnedCorrections, aiOutcome] = await Promise.all([
+    const [learnedCorrections, aiOutcome, similarityCandidates] = await Promise.all([
       prisma.jobAnalysisCorrection.findMany({
         where: { userId },
         orderBy: { updatedAt: "desc" },
@@ -525,6 +527,17 @@ export async function POST(request: NextRequest) {
         select: { fieldKey: true, sourceValue: true, correctedValue: true, state: true },
       }),
       aiPromise,
+      prisma.record.findMany({
+        where: { status: "APPROVED", isReported: false },
+        orderBy: { createdAt: "desc" },
+        take: 2000,
+        select: {
+          id: true, type: true, title: true, content: true, position: true,
+          salaryRange: true, workContent: true, actualSalary: true, actualWorkContent: true,
+          city: true, createdAt: true,
+          company: { select: { id: true, name: true } },
+        },
+      }),
     ]);
     let result = applyLearnedCorrections(deterministicResult, rawText, learnedCorrections);
     let aiUsed = false;
@@ -535,9 +548,15 @@ export async function POST(request: NextRequest) {
       if (aiOutcome?.error) console.error("AI analysis failed, using deterministic analysis:", aiOutcome.error);
       result = { ...result, aiReview: { status: "unavailable", summary: aiOutcome?.error || "AI 未配置或未返回结果", differences: [] } };
     }
-    const title = typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 80) : "\u672a\u547d\u540d\u62db\u8058\u5206\u6790";
+    const similarRecords = findSimilarRecords({
+      rawText,
+      title,
+      salary: result.fields.salaryRange?.value,
+      duties: result.fields.duties?.value,
+      requirements: result.fields.requirements?.value,
+    }, similarityCandidates);
     const item = await prisma.jobAnalysis.create({ data: { userId, title, companyName, source: typeof body.source === "string" ? body.source.trim() || null : null, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim() || null : null, rawText, resultJson: JSON.stringify(result), riskScore: result.riskScore } });
-    return NextResponse.json({ success: true, analysisMode, aiUsed, item: serialize(item), result });
+    return NextResponse.json({ success: true, analysisMode, aiUsed, item: serialize(item), result, similarRecords });
   } catch (error) {
     console.error("Create analysis archive error:", error);
     return NextResponse.json({ error: "\u5206\u6790\u4fdd\u5b58\u5931\u8d25" }, { status: 500 });

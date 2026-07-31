@@ -54,7 +54,24 @@ interface ArchiveItem {
   result: AnalysisResult;
 }
 
+interface SimilarRecordMatch {
+  recordId: number;
+  companyId: number;
+  companyName: string;
+  title: string;
+  position: string;
+  city: string;
+  recordType: string;
+  publishedAt: string;
+  score: number;
+  reasons: string[];
+  excerpt: string;
+}
+
 const USER_KEY = "job_insight_user";
+const ANALYSIS_SESSION_KEY = "billiejob_analysis_session";
+const ANALYSIS_RETURN_KEY = "billiejob_analysis_return";
+const recordTypeLabels: Record<string, string> = { JD_SNAPSHOT: "招聘信息", CHAT_SCREENSHOT: "HR 对话", INTERVIEW_EXPERIENCE: "面试经历" };
 const fieldLabels: Record<string, string> = {
   salaryRange: "薪资范围",
   salaryStructure: "\u85aa\u8d44\u6784\u6210",
@@ -153,6 +170,8 @@ export default function AnalyzePage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [similarRecords, setSimilarRecords] = useState<SimilarRecordMatch[]>([]);
+  const [sessionReady, setSessionReady] = useState(false);
   const [activeArchiveId, setActiveArchiveId] = useState<number | null>(null);
   const [screen, setScreen] = useState<"input" | "result">("input");
   const [savingField, setSavingField] = useState<string | null>(null);
@@ -177,13 +196,58 @@ export default function AnalyzePage() {
         const stored = raw ? JSON.parse(raw) as UserInfo : null;
         setUser(stored);
         if (stored) void loadArchives(stored.id);
+        const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+        const returningFromSimilar = sessionStorage.getItem(ANALYSIS_RETURN_KEY) === "1";
+        const sessionRaw = sessionStorage.getItem(ANALYSIS_SESSION_KEY);
+        if ((navigation?.type === "reload" || returningFromSimilar) && sessionRaw) {
+          const snapshot = JSON.parse(sessionRaw) as { result?: AnalysisResult; similarRecords?: SimilarRecordMatch[]; activeArchiveId?: number | null; screen?: "input" | "result"; title?: string; companyName?: string; source?: string; rawText?: string; imageUrl?: string };
+          if (snapshot.result) setResult(snapshot.result);
+          if (Array.isArray(snapshot.similarRecords)) setSimilarRecords(snapshot.similarRecords);
+          if (typeof snapshot.activeArchiveId === "number" || snapshot.activeArchiveId === null) setActiveArchiveId(snapshot.activeArchiveId ?? null);
+          if (snapshot.screen === "result" || snapshot.screen === "input") setScreen(snapshot.screen);
+          if (typeof snapshot.title === "string") setTitle(snapshot.title);
+          if (typeof snapshot.companyName === "string") setCompanyName(snapshot.companyName);
+          if (typeof snapshot.source === "string") setSource(snapshot.source);
+          if (typeof snapshot.rawText === "string") setRawText(snapshot.rawText);
+          if (typeof snapshot.imageUrl === "string") setImageUrl(snapshot.imageUrl);
+        } else {
+          sessionStorage.removeItem(ANALYSIS_SESSION_KEY);
+        }
+        sessionStorage.removeItem(ANALYSIS_RETURN_KEY);
       } catch {
         setUser(null);
       } finally {
+        setSessionReady(true);
         setAuthReady(true);
       }
     });
     return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    if (!result) {
+      sessionStorage.removeItem(ANALYSIS_SESSION_KEY);
+      return;
+    }
+    sessionStorage.setItem(ANALYSIS_SESSION_KEY, JSON.stringify({ result, similarRecords, activeArchiveId, screen, title, companyName, source, rawText, imageUrl }));
+  }, [sessionReady, result, similarRecords, activeArchiveId, screen, title, companyName, source, rawText, imageUrl]);
+
+  useEffect(() => {
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      if (sessionStorage.getItem(ANALYSIS_RETURN_KEY) === "1") {
+        sessionStorage.removeItem(ANALYSIS_RETURN_KEY);
+        return;
+      }
+      sessionStorage.removeItem(ANALYSIS_SESSION_KEY);
+      setSimilarRecords([]);
+      setResult(null);
+      setActiveArchiveId(null);
+      setScreen("input");
+    };
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
   }, []);
 
   const selectedArchives = useMemo(() => archives.filter((item) => selectedIds.includes(item.id)), [archives, selectedIds]);
@@ -256,6 +320,8 @@ export default function AnalyzePage() {
       setMessage("请把截图中的招聘文字粘贴或校对到下方，至少 12 个字");
       return;
     }
+    sessionStorage.removeItem(ANALYSIS_SESSION_KEY);
+    setSimilarRecords([]);
     setAnalyzing(true);
     setMessage(mode === "ai" ? "AI 正在复核招聘信息。模型能力有限，可能遗漏或误判；可点击“复制招聘要求和 AI 提示词”交给其他模型复核。最长等待 3 分钟。" : "正在使用规则引擎分析招聘信息...");
     try {
@@ -267,6 +333,7 @@ export default function AnalyzePage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "分析失败");
       setResult(data.result);
+      setSimilarRecords(Array.isArray(data.similarRecords) ? data.similarRecords : []);
       setActiveArchiveId(data.item.id);
       setScreen("result");
       setArchives((previous) => [data.item, ...previous]);
@@ -330,10 +397,15 @@ export default function AnalyzePage() {
 
   const openArchive = (item: ArchiveItem) => {
     setResult(item.result);
+    setSimilarRecords([]);
     setActiveArchiveId(item.id);
     setSavedField(null);
     setScreen("result");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const preserveAnalysisOnReturn = () => {
+    sessionStorage.setItem(ANALYSIS_RETURN_KEY, "1");
   };
 
   const clearDraft = () => {
@@ -439,6 +511,8 @@ export default function AnalyzePage() {
       </section> : null}
 
       {result && screen === "result" ? <section className="border-b-2 border-slate-200 bg-white px-5 py-8 sm:px-8"><div className="mx-auto max-w-[1440px]"><div className="flex items-end justify-between gap-4 border-b border-slate-100 pb-4"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Findings</p><h2 className="mt-2 text-xl font-bold text-slate-950">问题与待确认事项</h2></div><span className="text-sm font-bold text-slate-500">{result.findings.length} 项</span></div><div className="mt-4 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead className="border-b-2 border-slate-200 text-xs text-slate-500"><tr><th className="px-3 py-3">类别</th><th className="px-3 py-3">判断</th><th className="px-3 py-3">截图中的依据</th><th className="px-3 py-3">建议追问</th></tr></thead><tbody>{result.findings.map((finding) => { const level = levelLabel(finding.level); return <tr key={`${finding.category}-${finding.item}`} className="border-b border-slate-100 align-top"><td className="px-3 py-4 font-semibold text-slate-800">{finding.category}</td><td className="px-3 py-4"><div className="font-semibold text-slate-900">{finding.item}</div><span className={`mt-2 inline-flex px-2 py-1 text-xs font-bold ${level.style}`}>{level.text}</span></td><td className="px-3 py-4 leading-6 text-slate-600">{finding.evidence}</td><td className="px-3 py-4 leading-6 text-slate-600">{finding.suggestion}</td></tr>; })}</tbody></table></div></div></section> : null}
+
+      {result && screen === "result" ? <section className="border-b-2 border-slate-200 bg-slate-50 px-5 py-8 sm:px-8"><div className="mx-auto max-w-[1440px]"><div className="flex flex-col justify-between gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-700">Similar records</p><h2 className="mt-2 text-xl font-bold text-slate-950">记录中的相似招聘</h2><p className="mt-2 text-sm leading-6 text-slate-600">仅比较已审核通过且未被举报的记录，分别参考岗位、相似话术、薪资结构、工作内容和任职要求。</p></div><span className="text-xs font-semibold text-slate-500">{similarRecords.length ? `找到 ${similarRecords.length} 条` : "暂未找到"}</span></div>{similarRecords.length === 0 ? <div className="mt-5 border border-dashed border-slate-300 bg-white px-4 py-6 text-sm leading-6 text-slate-500">当前样本中还没有达到匹配阈值的记录。随着审核通过的招聘样本增加，这里会自动出现可对照的公司和记录。</div> : <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{similarRecords.map((match) => <article key={match.recordId} className="border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><a href={`/companies/${match.companyId}`} onClick={preserveAnalysisOnReturn} className="truncate text-base font-bold text-slate-950 hover:text-cyan-700">{match.companyName}</a><p className="mt-1 truncate text-sm text-slate-700">{match.position || match.title}</p></div><span className="shrink-0 border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-800">{match.score}% 相似</span></div><div className="mt-3 flex flex-wrap gap-1.5">{match.reasons.map((reason) => <span key={reason} className="border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">{reason}</span>)}</div><p className="mt-3 line-clamp-3 text-xs leading-5 text-slate-500">{match.excerpt || "该记录暂无可展示摘要"}</p><div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-400"><span>{recordTypeLabels[match.recordType] || match.recordType}{match.city ? ` · ${match.city}` : ""}</span><a href={`/records/${match.recordId}`} onClick={preserveAnalysisOnReturn} className="shrink-0 font-bold text-cyan-700 hover:text-cyan-900">查看记录</a></div></article>)}</div>}</div></section> : null}
 
       {screen === "input" ? <section className="mt-8 border-2 border-slate-200 bg-white p-5 shadow-[0_16px_42px_rgba(15,23,42,0.06)] sm:p-7"><div className="flex flex-col justify-between gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-400">Archive & compare</p><h2 className="mt-2 text-xl font-bold text-slate-950">分析存档与职位对比</h2><p className="mt-2 text-sm text-slate-500">点击“查看并编辑”可重新打开一份存档；勾选 2-4 条可横向比较。</p></div><span className="text-xs font-bold text-slate-400">已选 {selectedArchives.length} / 4</span></div>{archives.length === 0 ? <p className="py-10 text-center text-sm text-slate-400">完成第一次分析后，存档会出现在这里。</p> : <div className="mt-4 grid gap-3 md:grid-cols-2">{archives.map((item) => <div key={item.id} className={`border p-4 transition ${activeArchiveId === item.id ? "border-slate-950 bg-slate-50" : selectedIds.includes(item.id) ? "border-cyan-600 bg-cyan-50/40" : "border-slate-200 bg-white"}`}><div className="flex items-start gap-3"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelected(item.id)} className="mt-1 h-4 w-4 accent-cyan-600" /><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><div><h3 className="truncate font-bold text-slate-950">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{item.companyName || "未填写公司"} {item.source ? `· ${item.source}` : ""}</p></div><span className={`shrink-0 px-2 py-1 text-xs font-bold ${scoreStyle(item.riskScore)}`}>{item.riskScore}</span></div><p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{item.result.summary}</p><div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400"><span>{formatDate(item.createdAt)}</span><div className="flex items-center gap-3"><button type="button" onClick={() => openArchive(item)} className="font-semibold text-cyan-700 hover:text-cyan-900">查看并编辑</button><button type="button" onClick={() => void deleteArchive(item.id)} className="font-semibold text-red-500 hover:text-red-700">删除存档</button></div></div></div></div></div>)}</div>}
         {selectedArchives.length >= 2 ? <div className="mt-8 overflow-x-auto border-t-2 border-slate-100 pt-6"><h3 className="mb-3 text-base font-bold text-slate-950">横向比较表</h3><table className="w-full min-w-[680px] text-left text-sm"><thead className="border-b-2 border-slate-200"><tr><th className="px-3 py-3 text-slate-500">信息项</th>{selectedArchives.map((item) => <th key={item.id} className="px-3 py-3 font-bold text-slate-950">{item.title}</th>)}</tr></thead><tbody>{Object.keys(fieldLabels).map((key) => <tr key={key} className="border-b border-slate-100"><td className="px-3 py-3 font-semibold text-slate-700">{fieldLabels[key]}</td>{selectedArchives.map((item) => { const field = item.result.fields[key] || { value: "未在文字中提及", state: "missing" as const }; return <td key={item.id} className={`px-3 py-3 ${field.state === "missing" ? "font-semibold text-red-600" : field.state === "unclear" ? "font-semibold text-amber-700" : "text-emerald-700"}`}>{field.value}</td>; })}</tr>)}<tr className="border-b border-slate-100"><td className="px-3 py-3 font-semibold text-slate-700">问题数量</td>{selectedArchives.map((item) => <td key={item.id} className="px-3 py-3 font-bold text-slate-950">{item.result.findings.length} 项</td>)}</tr></tbody></table></div> : null}
