@@ -89,14 +89,35 @@ const initialSections: Record<RecordType, SectionState> = {
   JD_SNAPSHOT: emptySection(),
 };
 
+function cleanRecruitmentOcr(text: string) {
+  return text.split(/\r?\n/u).map((line) => line.replace(/\s+/gu, " ").trim()).filter((line) => line && !/^(?:不感兴趣|继续沟通|立即沟通|发消息|投递简历|收藏|分享|举报|BOSS直聘|Boss直聘)$/iu.test(line) && !/^\d{1,2}:\d{2}.*(?:4G|5G|Wi-?Fi|电量|@)/iu.test(line)).join("\n");
+}
+
+function extractRecruitmentMeta(text: string) {
+  const lines = text.split(/\r?\n/u).map((line) => line.replace(/\s+/gu, " ").trim()).filter(Boolean);
+  const detailIndex = lines.findIndex((line) => /职位详情|岗位详情|职位描述/u.test(line));
+  const header = detailIndex >= 0 ? lines.slice(0, detailIndex) : lines.slice(0, 12);
+  const companyLine = header.find((line) => /(?:[•·]|\s)(?:hr|HR|招聘者|人事)$/u.test(line));
+  const company = companyLine?.replace(/(?:[•·]|\s)+(?:hr|HR|招聘者|人事)$/u, "").trim() || "";
+  const positionLine = header.find((line) => /客服|工程师|设计师|运营|销售|专员|助理|经理|顾问|老师|开发|产品|会计|行政|主播|编辑|司机|保安|店员/u.test(line) && !/职位详情|工作内容|任职要求/u.test(line));
+  const position = positionLine?.replace(/\s*[（(].*$/u, "").replace(/\s*(?:\d+(?:\.\d+)?[kK]|[0-9]+-[0-9]+[kK]).*$/u, "").trim() || "";
+  const cityMatch = text.match(/(?:北京|上海|广州|深圳|成都|重庆|杭州|武汉|西安|南京|苏州|天津|长沙|郑州|青岛|厦门|宁波|东莞|佛山|合肥|昆明|南昌|福州|济南|大连|沈阳|哈尔滨|贵阳|南宁|无锡|常州|温州|嘉兴|石家庄|太原|兰州|乌鲁木齐|呼和浩特|海口|三亚)/u);
+  return { company, position, city: cityMatch?.[0] || "" };
+}
+
 function ImageUploader({
   images,
   onChange,
+  onOcr,
+  ocrLoading,
 }: {
   images: string[];
   onChange: (images: string[]) => void;
+  onOcr?: (file: File) => void;
+  ocrLoading?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [latestFile, setLatestFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -115,6 +136,7 @@ function ImageUploader({
     }
 
     setUploading(true);
+    setLatestFile(file);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -171,6 +193,7 @@ function ImageUploader({
           </button>
         ) : null}
       </div>
+      {onOcr ? <button type="button" onClick={() => latestFile && onOcr(latestFile)} disabled={!latestFile || ocrLoading} className="mt-4 border-2 border-cyan-700 bg-cyan-50 px-4 py-2 text-sm font-bold text-cyan-800 disabled:opacity-50">{ocrLoading ? "识别中..." : "识别招聘信息"}</button> : null}
       {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
       <input
         ref={inputRef}
@@ -197,6 +220,8 @@ export default function UploadPage() {
   const [sections, setSections] = useState(initialSections);
   const [formError, setFormError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrMessage, setOcrMessage] = useState("");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -247,6 +272,24 @@ export default function UploadPage() {
     } finally {
       setLogging(false);
     }
+  };
+
+  const recognizeRecruitmentImage = async (file: File) => {
+    setOcrLoading(true); setOcrMessage("");
+    try {
+      const formData = new FormData(); formData.append("file", file);
+      const response = await fetch("/api/analyze/ocr", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "OCR 识别失败");
+      const text = cleanRecruitmentOcr(String(data.text || ""));
+      if (!text) throw new Error("未识别到有效招聘文字");
+      const meta = extractRecruitmentMeta(text);
+      updateActiveSection({ content: text });
+      if (meta.company) setCompanyName(meta.company);
+      if (meta.position) setPosition(meta.position);
+      if (meta.city) setCity(meta.city);
+      setOcrMessage(`已识别招聘原文${meta.company || meta.position || meta.city ? "，并自动填充可识别的公司、城市和岗位" : "，请手动补充公司、城市和岗位"}。`);
+    } catch (error) { setOcrMessage(error instanceof Error ? error.message : "OCR 识别失败"); } finally { setOcrLoading(false); }
   };
 
   const submitActiveSection = async () => {
@@ -434,6 +477,7 @@ export default function UploadPage() {
                 <div className="mt-6 border border-emerald-200 bg-emerald-50/70 p-5 text-sm leading-6 text-emerald-800">这条记录已经提交，审核通过后会出现在公司页面。你可以选择上方其他类型继续补充。</div>
               ) : (
                 <div className="mt-6 space-y-6">
+                  {activeType === "JD_SNAPSHOT" ? <div className="border-b border-slate-200 pb-6"><ImageUploader images={activeSection.images} onChange={(images) => updateActiveSection({ images })} onOcr={recognizeRecruitmentImage} ocrLoading={ocrLoading} />{ocrMessage ? <p className="mt-3 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-900">{ocrMessage}</p> : null}</div> : null}
                   {activeType !== "JD_SNAPSHOT" ? <label className="block">
                     <span className="text-sm font-medium text-slate-800">一句话标题 <em className="not-italic text-red-500">*</em></span>
                     <input
@@ -500,7 +544,7 @@ export default function UploadPage() {
                     </div>
                   ) : null}
 
-                  <div className="border-t border-slate-200 pt-6"><ImageUploader images={activeSection.images} onChange={(images) => updateActiveSection({ images })} /></div>
+                  {activeType !== "JD_SNAPSHOT" ? <div className="border-t border-slate-200 pt-6"><ImageUploader images={activeSection.images} onChange={(images) => updateActiveSection({ images })} /></div> : null}
                   {formError ? <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{formError}</p> : null}
                   {successMessage ? <p className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</p> : null}
                   <div className="flex flex-col-reverse justify-between gap-3 border-t border-slate-200 pt-6 sm:flex-row sm:items-center">

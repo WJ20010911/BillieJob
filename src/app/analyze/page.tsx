@@ -278,6 +278,12 @@ export default function AnalyzePage() {
     }
   };
 
+  const copyExternalReviewPrompt = async () => {
+    if (!rawText.trim()) { setMessage("请先识别或粘贴招聘文字"); return; }
+    const prompt = `请作为独立的劳动权益与求职风险分析助手，基于以下招聘信息进行审慎分析。请不要编造未出现的信息；区分明确事实、合理推断和缺失信息。重点核对：岗位职责是否具体、薪资范围和构成、基本工资/绩效/提成/补贴、工时与休息、倒班和加班、社保公积金、用工类型、地点、招聘流程及潜在风险。请给出：1. 已确认信息表；2. 风险或模糊点；3. 面试前需要向 HR 追问的问题；4. 总体建议。\n\n【招聘原文】\n${rawText.trim()}`;
+    try { await navigator.clipboard.writeText(prompt); setMessage("招聘原文和独立分析提示词已复制，可直接粘贴到豆包或 DeepSeek。"); } catch { setMessage("复制失败，请手动复制招聘原文。"); }
+  };
+
   const toggleSelected = (id: number) => {
     setSelectedIds((previous) => previous.includes(id) ? previous.filter((item) => item !== id) : previous.length >= 4 ? previous : [...previous, id]);
   };
@@ -396,6 +402,7 @@ export default function AnalyzePage() {
           </div>
           <label className="mt-4 block text-sm font-semibold text-slate-800">来源平台（可选）<input value={source} onChange={(event) => setSource(event.target.value)} placeholder="例如：BOSS 直聘、猎聘、微信群" className="mt-2 h-11 w-full border border-slate-300 bg-white px-3 text-sm font-normal outline-none focus:border-cyan-600" /></label>
           <label className="mt-4 block text-sm font-semibold text-slate-800">招聘文字 <span className="font-normal text-slate-400">（必填，截图识别/复制后粘贴）</span><textarea value={rawText} onChange={(event) => setRawText(event.target.value)} rows={8} placeholder="把截图中的职位名称、职责、薪资、工作地点、要求等文字粘贴到这里，系统会按字段分析..." className="mt-2 w-full resize-y border border-slate-300 bg-white px-3 py-3 text-sm font-normal leading-6 outline-none focus:border-cyan-600" /></label>
+          <button type="button" onClick={() => void copyExternalReviewPrompt()} disabled={!rawText.trim()} className="mt-4 border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-900 disabled:opacity-50">复制招聘要求和 AI 提示词</button>
         </section>
 
         <aside className="h-fit border-2 border-slate-200 bg-white p-4 shadow-[0_16px_42px_rgba(15,23,42,0.06)] lg:sticky lg:top-24">
