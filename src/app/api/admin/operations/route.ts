@@ -31,12 +31,22 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ codes });
   }
+  if (kind === "ads") {
+    const ads = await prisma.advertisement.findMany({ where: query ? { title: { contains: query } } : undefined, orderBy: { updatedAt: "desc" }, take: 100, include: { _count: { select: { unlocks: true } } } });
+    return NextResponse.json({ ads });
+  }
   return NextResponse.json({ error: "无效请求" }, { status: 400 });
 }
 
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: "未登录" }, { status: 401 });
   const body = await request.json();
+  if (body.action === "createAd") {
+    const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
+    if (!title) return NextResponse.json({ error: "广告标题不能为空" }, { status: 400 });
+    const ad = await prisma.advertisement.create({ data: { title, description: typeof body.description === "string" ? body.description.trim().slice(0, 500) : "", imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim().slice(0, 500) : "", targetUrl: typeof body.targetUrl === "string" ? body.targetUrl.trim().slice(0, 500) : "", enabled: body.enabled !== false, startAt: body.startAt ? new Date(body.startAt) : null, endAt: body.endAt ? new Date(body.endAt) : null } });
+    return NextResponse.json({ success: true, ad });
+  }
   if (body.action !== "createCodes") return NextResponse.json({ error: "无效操作" }, { status: 400 });
   const quantity = Math.max(1, Math.min(200, Number(body.quantity) || 1));
   const days = Number(body.days);
@@ -73,6 +83,18 @@ export async function PATCH(request: NextRequest) {
     const id = Number(body.id);
     const active = Boolean(body.active);
     await prisma.redemptionCode.update({ where: { id }, data: { active } });
+    return NextResponse.json({ success: true });
+  }
+  if (body.action === "updateAd") {
+    const id = Number(body.id);
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "广告参数无效" }, { status: 400 });
+    const ad = await prisma.advertisement.update({ where: { id }, data: { title: typeof body.title === "string" ? body.title.trim().slice(0, 120) : undefined, description: typeof body.description === "string" ? body.description.trim().slice(0, 500) : undefined, imageUrl: typeof body.imageUrl === "string" ? body.imageUrl.trim().slice(0, 500) : undefined, targetUrl: typeof body.targetUrl === "string" ? body.targetUrl.trim().slice(0, 500) : undefined, enabled: typeof body.enabled === "boolean" ? body.enabled : undefined, startAt: body.startAt ? new Date(body.startAt) : body.startAt === null ? null : undefined, endAt: body.endAt ? new Date(body.endAt) : body.endAt === null ? null : undefined } });
+    return NextResponse.json({ success: true, ad });
+  }
+  if (body.action === "deleteAd") {
+    const id = Number(body.id);
+    if (!Number.isInteger(id)) return NextResponse.json({ error: "广告参数无效" }, { status: 400 });
+    await prisma.advertisement.delete({ where: { id } });
     return NextResponse.json({ success: true });
   }
   return NextResponse.json({ error: "无效操作" }, { status: 400 });

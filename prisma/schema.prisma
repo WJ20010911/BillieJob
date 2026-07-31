@@ -41,6 +41,7 @@ model User {
   redemptionUses RedemptionUse[]
   jobAnalyses    JobAnalysis[]
   jobAnalysisCorrections JobAnalysisCorrection[]
+  adUnlocks      AdUnlock[]
 }
 
 // 用户上传记录
@@ -216,4 +217,36 @@ model AppSetting {
   key       String    @unique
   value     String
   updatedAt DateTime  @updatedAt
+}
+
+model Advertisement {
+  id               Int       @id @default(autoincrement())
+  title            String
+  description      String    @default("")
+  imageUrl         String    @default("")
+  targetUrl        String    @default("")
+  placement        String    @default("RECORD_PAGE")
+  enabled          Boolean   @default(true)
+  startAt          DateTime?
+  endAt            DateTime?
+  impressionCount  Int       @default(0)
+  completionCount  Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  unlocks          AdUnlock[]
+}
+
+model AdUnlock {
+  id          Int           @id @default(autoincrement())
+  adId        Int
+  ad          Advertisement @relation(fields: [adId], references: [id], onDelete: Cascade)
+  userId      Int?
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  companyId   Int
+  visitorKey  String
+  expiresAt   DateTime
+  createdAt   DateTime      @default(now())
+
+  @@unique([adId, companyId, visitorKey])
+  @@index([companyId, visitorKey, expiresAt])
 }

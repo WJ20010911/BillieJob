@@ -25,6 +25,14 @@ interface CompanyInfo {
   };
 }
 
+interface RecordPageAd {
+  id: number;
+  title: string;
+  description: string;
+  imageUrl: string;
+  targetUrl: string;
+}
+
 const ratingTypeLabels: Record<RecordType, string> = {
   JD_SNAPSHOT: "招聘信息",
   CHAT_SCREENSHOT: "HR 对话",
@@ -108,6 +116,10 @@ export default function CompanyPageClient({
   const [loginError, setLoginError] = useState("");
   const [favorited, setFavorited] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [ad, setAd] = useState<RecordPageAd | null>(null);
+  const [showAd, setShowAd] = useState(false);
+  const [adLoading, setAdLoading] = useState(false);
+  const [adError, setAdError] = useState("");
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -129,6 +141,12 @@ export default function CompanyPageClient({
       } catch {
         // Ignore stale local account data.
       }
+      void fetch(`/api/ads?companyId=${company.id}`).then((response) => response.ok ? response.json() : null).then((result) => {
+        if (!result) return;
+        if (result.ad) setAd(result.ad as RecordPageAd);
+        else setShowContent(true);
+        if (result.unlocked) setShowContent(true);
+      }).catch(() => setShowContent(true));
     });
     return () => window.cancelAnimationFrame(frame);
   }, [company.id]);
@@ -199,6 +217,23 @@ export default function CompanyPageClient({
       // ignore
     }
     setShowLogin(true);
+  };
+
+  const openAd = () => {
+    if (ad) { setAdError(""); setShowAd(true); } else setShowContent(true);
+  };
+
+  const completeAd = async () => {
+    if (!ad) { setShowContent(true); setShowAd(false); return; }
+    setAdLoading(true); setAdError("");
+    try {
+      const raw = localStorage.getItem("job_insight_user");
+      const user = raw ? JSON.parse(raw) as { id: number } : null;
+      const response = await fetch("/api/ads", { method: "POST", headers: { "Content-Type": "application/json", ...(user ? { "x-user-id": String(user.id) } : {}) }, body: JSON.stringify({ adId: ad.id, companyId: company.id }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "广告解锁失败");
+      setShowAd(false); setShowContent(true);
+    } catch (error) { setAdError(error instanceof Error ? error.message : "广告解锁失败"); } finally { setAdLoading(false); }
   };
 
   const toggleFavorite = async () => {
@@ -422,7 +457,7 @@ export default function CompanyPageClient({
           </p>
           <div className="mt-5 flex justify-center gap-3">
             <button
-              onClick={() => setShowContent(true)}
+              onClick={openAd}
               className="rounded-xl bg-slate-950 px-6 py-2.5 font-medium text-white transition hover:bg-slate-800"
             >
               观看广告
@@ -466,6 +501,7 @@ export default function CompanyPageClient({
         }}
         onSubmit={handleLogin}
       />
+      {showAd && ad ? <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/55 px-4 py-6" role="dialog" aria-modal="true" aria-label="推广内容"><div className="w-full max-w-md border border-slate-200 bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-100 px-5 py-4"><div><span className="text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-700">推广内容</span><h2 className="mt-1 text-lg font-bold text-slate-950">{ad.title}</h2></div><button type="button" onClick={() => void completeAd()} disabled={adLoading} className="h-8 w-8 text-xl text-slate-500 hover:bg-slate-100" aria-label="关闭广告">×</button></div>{ad.imageUrl ? <img src={ad.imageUrl} alt={ad.title} className="max-h-64 w-full object-contain bg-slate-50" /> : null}<div className="p-5"><p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">{ad.description || "感谢查看推广内容。关闭后即可查看公司记录。"}</p>{ad.targetUrl ? <a href={ad.targetUrl} target="_blank" rel="nofollow sponsored noreferrer" className="mt-3 inline-block text-xs text-cyan-700 underline">查看推广详情</a> : null}{adError ? <p className="mt-3 text-sm text-red-600">{adError}</p> : null}<button type="button" onClick={() => void completeAd()} disabled={adLoading} className="mt-5 w-full bg-slate-950 px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{adLoading ? "解锁中..." : "关闭广告并查看记录"}</button></div></div></div> : null}
     </div>
   );
 }

@@ -29,6 +29,7 @@ interface ManagedUser { id: number; identifier: string; nickname: string | null;
 interface ManagedRecord { id: number; title: string; position: string; content: string; type: string; status: string; city: string; updatedAt: string }
 interface ManagedCompany { id: number; name: string; _count: { records: number }; records: ManagedRecord[] }
 interface RedemptionCode { id: number; code: string; membershipDays: number; maxUses: number; usedCount: number; active: boolean; createdAt: string; uses: Array<{ createdAt: string; user: { identifier: string; nickname: string | null } }> }
+interface ManagedAd { id: number; title: string; description: string; imageUrl: string; targetUrl: string; enabled: boolean; startAt: string | null; endAt: string | null; impressionCount: number; completionCount: number; _count: { unlocks: number } }
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("PENDING");
-  const [activeSection, setActiveSection] = useState<"audit" | "content" | "users" | "codes" | "config">("audit");
+  const [activeSection, setActiveSection] = useState<"audit" | "content" | "users" | "codes" | "ads" | "config">("audit");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [ocrConfigured, setOcrConfigured] = useState<boolean | null>(null);
   const [ocrKey, setOcrKey] = useState("");
@@ -56,13 +57,21 @@ export default function AdminDashboard() {
   const [codeDays, setCodeDays] = useState(7);
   const [customDays, setCustomDays] = useState("");
   const [codeQuery, setCodeQuery] = useState("");
+  const [ads, setAds] = useState<ManagedAd[]>([]);
+  const [editingAdId, setEditingAdId] = useState<number | null>(null);
+  const [adTitle, setAdTitle] = useState("");
+  const [adDescription, setAdDescription] = useState("");
+  const [adImageUrl, setAdImageUrl] = useState("");
+  const [adTargetUrl, setAdTargetUrl] = useState("");
+  const [adStartAt, setAdStartAt] = useState("");
+  const [adEndAt, setAdEndAt] = useState("");
   const [editingRecord, setEditingRecord] = useState<ManagedRecord | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editPosition, setEditPosition] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editSaving, setEditSaving] = useState(false);
 
-  const loadOperations = async (kind: "companies" | "users" | "codes", q = "") => {
+  const loadOperations = async (kind: "companies" | "users" | "codes" | "ads", q = "") => {
     setOperationMessage("");
     const response = await fetch(`/api/admin/operations?kind=${kind}&q=${encodeURIComponent(q)}`);
     if (response.status === 401) { router.push("/admin"); return; }
@@ -71,6 +80,22 @@ export default function AdminDashboard() {
     if (kind === "companies") setCompanies(data.companies || []);
     if (kind === "users") setManagedUsers(data.users || []);
     if (kind === "codes") setCodes(data.codes || []);
+    if (kind === "ads") setAds(data.ads || []);
+  };
+
+  const resetAdForm = () => { setEditingAdId(null); setAdTitle(""); setAdDescription(""); setAdImageUrl(""); setAdTargetUrl(""); setAdStartAt(""); setAdEndAt(""); };
+  const saveAd = async () => {
+    const action = editingAdId ? "updateAd" : "createAd";
+    const response = await fetch("/api/admin/operations", { method: editingAdId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id: editingAdId, title: adTitle, description: adDescription, imageUrl: adImageUrl, targetUrl: adTargetUrl, startAt: adStartAt || null, endAt: adEndAt || null, enabled: true }) });
+    const data = await response.json();
+    if (!response.ok) { setOperationMessage(data.error || "广告保存失败"); return; }
+    setOperationMessage(editingAdId ? "广告已更新" : "广告已创建"); resetAdForm(); void loadOperations("ads");
+  };
+  const editAd = (item: ManagedAd) => { setEditingAdId(item.id); setAdTitle(item.title); setAdDescription(item.description); setAdImageUrl(item.imageUrl); setAdTargetUrl(item.targetUrl); setAdStartAt(item.startAt ? item.startAt.slice(0, 16) : ""); setAdEndAt(item.endAt ? item.endAt.slice(0, 16) : ""); };
+  const adAction = async (action: "updateAd" | "deleteAd", item: ManagedAd) => {
+    if (action === "deleteAd" && !window.confirm("确定删除这条广告吗？")) return;
+    await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id: item.id, enabled: action === "updateAd" ? !item.enabled : undefined }) });
+    void loadOperations("ads");
   };
 
   const editRecord = (record: ManagedRecord) => {
@@ -267,6 +292,7 @@ export default function AdminDashboard() {
         <button type="button" onClick={() => { setActiveSection("content"); void loadOperations("companies", contentQuery); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "content" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>内容管理</button>
         <button type="button" onClick={() => { setActiveSection("users"); void loadOperations("users", contentQuery); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "users" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>用户</button>
         <button type="button" onClick={() => { setActiveSection("codes"); void loadOperations("codes"); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "codes" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>兑换码</button>
+        <button type="button" onClick={() => { setActiveSection("ads"); void loadOperations("ads"); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "ads" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>广告</button>
         <button type="button" onClick={() => setActiveSection("config")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "config" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>配置</button>
       </div>
 
@@ -287,6 +313,8 @@ export default function AdminDashboard() {
       {activeSection === "users" ? <section className="space-y-3"><div className="flex gap-2"><input value={contentQuery} onChange={(event) => setContentQuery(event.target.value)} placeholder="搜索账号或昵称" className="h-10 min-w-0 flex-1 border border-slate-300 px-3 text-sm" /><button onClick={() => void loadOperations("users", contentQuery)} className="border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">搜索</button></div>{managedUsers.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 border border-slate-200 bg-white p-4"><div><strong className="text-sm">{item.nickname || item.identifier}</strong><p className="mt-1 text-xs text-slate-500">{item.identifier} · 会员 {item.membershipDays} 天 · 提交 {item._count.records} 条 · 已兑换 {item._count.redemptionUses} 次</p></div><div className="flex flex-wrap gap-1">{[1,3,7,14,30].map((day) => <button key={day} onClick={() => void giftMembership(item.id, day)} className="border border-cyan-300 px-2 py-1 text-xs text-cyan-800">+{day}天</button>)}<button onClick={() => void giftMembership(item.id)} className="border border-slate-400 px-2 py-1 text-xs">自定义</button></div></div>)}</section> : null}
 
       {activeSection === "codes" ? <section><div className="border-2 border-slate-900 bg-white p-5"><h2 className="font-bold">批量生成推广兑换码</h2><div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm">数量<input type="number" min="1" max="200" value={codeQuantity} onChange={(event) => setCodeQuantity(Number(event.target.value))} className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><label className="text-sm">会员天数<select value={codeDays} onChange={(event) => { setCodeDays(Number(event.target.value)); setCustomDays(""); }} className="ml-2 h-10 border border-slate-300 px-2">{[1,3,7,14,30].map((day) => <option key={day} value={day}>{day}天</option>)}</select></label><label className="text-sm">自定义 1-30<input value={customDays} onChange={(event) => setCustomDays(event.target.value)} type="number" min="1" max="30" className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><button onClick={() => void createCodes()} className="h-10 border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">生成单次码</button></div></div><div className="mt-4 overflow-x-auto border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">兑换码</th><th>天数</th><th>使用情况</th><th>状态</th><th></th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t"><td className="p-3 font-mono font-medium">{code.code}</td><td>{code.membershipDays} 天</td><td>{code.usedCount}/{code.maxUses}</td><td>{code.active ? "可用" : "已作废"}</td><td><button onClick={async () => { await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "setCodeActive", id: code.id, active: !code.active }) }); void loadOperations("codes"); }} className="px-3 py-2 text-xs font-bold text-red-700">{code.active ? "作废" : "恢复"}</button></td></tr>)}</tbody></table></div></section> : null}
+
+      {activeSection === "ads" ? <section className="space-y-5"><div className="border-2 border-slate-900 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-950">记录页静态广告</h2><p className="mt-1 text-xs text-slate-500">当前只投放在公司记录解锁弹窗。用户关闭广告后获得该公司的 24 小时查看权限。</p></div>{editingAdId ? <button type="button" onClick={resetAdForm} className="text-xs font-bold text-slate-500">新建广告</button> : null}</div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-800">广告标题<input value={adTitle} onChange={(event) => setAdTitle(event.target.value)} maxLength={120} className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="text-sm font-semibold text-slate-800">跳转链接（可选）<input value={adTargetUrl} onChange={(event) => setAdTargetUrl(event.target.value)} placeholder="https://..." className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label></div><label className="mt-4 block text-sm font-semibold text-slate-800">广告说明<textarea value={adDescription} onChange={(event) => setAdDescription(event.target.value)} maxLength={500} rows={4} className="mt-2 w-full border border-slate-300 px-3 py-2 text-sm font-normal" /></label><label className="mt-4 block text-sm font-semibold text-slate-800">图片地址（可选）<input value={adImageUrl} onChange={(event) => setAdImageUrl(event.target.value)} placeholder="https://.../ad.jpg" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-800">开始时间（可选）<input value={adStartAt} onChange={(event) => setAdStartAt(event.target.value)} type="datetime-local" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="text-sm font-semibold text-slate-800">结束时间（可选）<input value={adEndAt} onChange={(event) => setAdEndAt(event.target.value)} type="datetime-local" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label></div><button type="button" onClick={() => void saveAd()} disabled={!adTitle.trim()} className="mt-5 border-2 border-slate-950 bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{editingAdId ? "保存广告" : "创建广告"}</button></div><div className="border border-slate-200 bg-white"><div className="border-b border-slate-200 px-5 py-3 text-sm font-bold text-slate-900">广告列表</div>{ads.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-400">尚未创建广告。未配置广告时，记录页不会阻断用户查看。</p> : <div className="divide-y divide-slate-100">{ads.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div className="min-w-0"><p className="font-semibold text-slate-950">{item.title}</p><p className="mt-1 line-clamp-1 text-xs text-slate-500">{item.description || "无广告说明"}</p><p className="mt-2 text-xs text-slate-400">展示 {item.impressionCount} · 完成解锁 {item.completionCount} · 实际解锁 {item._count.unlocks} · {item.enabled ? "投放中" : "已停用"}</p></div><div className="flex gap-2"><button type="button" onClick={() => editAd(item)} className="border border-slate-300 px-3 py-1.5 text-xs font-bold">编辑</button><button type="button" onClick={() => void adAction("updateAd", item)} className="border border-cyan-300 px-3 py-1.5 text-xs font-bold text-cyan-800">{item.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => void adAction("deleteAd", item)} className="border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700">删除</button></div></div>)}</div>}</div></section> : null}
 
       {activeSection === "config" ? (
         <div className="space-y-6">
