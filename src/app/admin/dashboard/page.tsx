@@ -30,6 +30,12 @@ interface ManagedRecord { id: number; title: string; position: string; content: 
 interface ManagedCompany { id: number; name: string; _count: { records: number }; records: ManagedRecord[] }
 interface RedemptionCode { id: number; code: string; membershipDays: number; maxUses: number; usedCount: number; active: boolean; createdAt: string; uses: Array<{ createdAt: string; user: { identifier: string; nickname: string | null } }> }
 interface ManagedAd { id: number; title: string; description: string; imageUrl: string; targetUrl: string; enabled: boolean; startAt: string | null; endAt: string | null; impressionCount: number; completionCount: number; _count: { unlocks: number } }
+interface BackupItem { archiveName: string; createdAt: string; archiveBytes: number; databaseBytes: number; uploadsIncluded: boolean; uploadFileCount: number }
+
+function formatBytes(value: number) {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -37,7 +43,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("PENDING");
-  const [activeSection, setActiveSection] = useState<"audit" | "content" | "users" | "codes" | "ads" | "config">("audit");
+  const [activeSection, setActiveSection] = useState<"audit" | "content" | "users" | "codes" | "ads" | "backup" | "config">("audit");
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [ocrConfigured, setOcrConfigured] = useState<boolean | null>(null);
   const [ocrKey, setOcrKey] = useState("");
@@ -70,6 +76,43 @@ export default function AdminDashboard() {
   const [editPosition, setEditPosition] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [backups, setBackups] = useState<BackupItem[]>([]);
+  const [backupRetentionHours, setBackupRetentionHours] = useState(72);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupCreating, setBackupCreating] = useState(false);
+  const [backupMessage, setBackupMessage] = useState("");
+
+  const loadBackups = async () => {
+    setBackupLoading(true);
+    try {
+      const response = await fetch("/api/admin/backups", { cache: "no-store" });
+      if (response.status === 401) { router.push("/admin"); return; }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "加载备份失败");
+      setBackups(data.backups || []);
+      setBackupRetentionHours(Number(data.retentionHours) || 72);
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "加载备份失败");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
+  const createBackup = async () => {
+    setBackupCreating(true);
+    setBackupMessage("");
+    try {
+      const response = await fetch("/api/admin/backups", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "创建备份失败");
+      setBackupMessage("备份已创建，可直接下载并用于迁移服务器。");
+      void loadBackups();
+    } catch (error) {
+      setBackupMessage(error instanceof Error ? error.message : "创建备份失败");
+    } finally {
+      setBackupCreating(false);
+    }
+  };
 
   const loadOperations = async (kind: "companies" | "users" | "codes" | "ads", q = "") => {
     setOperationMessage("");
@@ -293,6 +336,7 @@ export default function AdminDashboard() {
         <button type="button" onClick={() => { setActiveSection("users"); void loadOperations("users", contentQuery); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "users" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>用户</button>
         <button type="button" onClick={() => { setActiveSection("codes"); void loadOperations("codes"); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "codes" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>兑换码</button>
         <button type="button" onClick={() => { setActiveSection("ads"); void loadOperations("ads"); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "ads" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>广告</button>
+        <button type="button" onClick={() => { setActiveSection("backup"); void loadBackups(); }} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "backup" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>备份</button>
         <button type="button" onClick={() => setActiveSection("config")} className={"border-b-4 px-5 py-3 text-sm font-bold transition " + (activeSection === "config" ? "-mb-0.5 border-cyan-600 text-cyan-700" : "border-transparent text-slate-500 hover:text-slate-900")}>配置</button>
       </div>
 
@@ -315,6 +359,8 @@ export default function AdminDashboard() {
       {activeSection === "codes" ? <section><div className="border-2 border-slate-900 bg-white p-5"><h2 className="font-bold">批量生成推广兑换码</h2><div className="mt-4 flex flex-wrap items-end gap-3"><label className="text-sm">数量<input type="number" min="1" max="200" value={codeQuantity} onChange={(event) => setCodeQuantity(Number(event.target.value))} className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><label className="text-sm">会员天数<select value={codeDays} onChange={(event) => { setCodeDays(Number(event.target.value)); setCustomDays(""); }} className="ml-2 h-10 border border-slate-300 px-2">{[1,3,7,14,30].map((day) => <option key={day} value={day}>{day}天</option>)}</select></label><label className="text-sm">自定义 1-30<input value={customDays} onChange={(event) => setCustomDays(event.target.value)} type="number" min="1" max="30" className="ml-2 h-10 w-20 border border-slate-300 px-2" /></label><button onClick={() => void createCodes()} className="h-10 border-2 border-slate-950 bg-cyan-600 px-4 text-sm font-bold text-white">生成单次码</button></div></div><div className="mt-4 overflow-x-auto border border-slate-200 bg-white"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="p-3">兑换码</th><th>天数</th><th>使用情况</th><th>状态</th><th></th></tr></thead><tbody>{codes.map((code) => <tr key={code.id} className="border-t"><td className="p-3 font-mono font-medium">{code.code}</td><td>{code.membershipDays} 天</td><td>{code.usedCount}/{code.maxUses}</td><td>{code.active ? "可用" : "已作废"}</td><td><button onClick={async () => { await fetch("/api/admin/operations", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "setCodeActive", id: code.id, active: !code.active }) }); void loadOperations("codes"); }} className="px-3 py-2 text-xs font-bold text-red-700">{code.active ? "作废" : "恢复"}</button></td></tr>)}</tbody></table></div></section> : null}
 
       {activeSection === "ads" ? <section className="space-y-5"><div className="border-2 border-slate-900 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="font-bold text-slate-950">记录页静态广告</h2><p className="mt-1 text-xs text-slate-500">当前只投放在公司记录解锁弹窗。用户关闭广告后获得该公司的 24 小时查看权限。</p></div>{editingAdId ? <button type="button" onClick={resetAdForm} className="text-xs font-bold text-slate-500">新建广告</button> : null}</div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-800">广告标题<input value={adTitle} onChange={(event) => setAdTitle(event.target.value)} maxLength={120} className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="text-sm font-semibold text-slate-800">跳转链接（可选）<input value={adTargetUrl} onChange={(event) => setAdTargetUrl(event.target.value)} placeholder="https://..." className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label></div><label className="mt-4 block text-sm font-semibold text-slate-800">广告说明<textarea value={adDescription} onChange={(event) => setAdDescription(event.target.value)} maxLength={500} rows={4} className="mt-2 w-full border border-slate-300 px-3 py-2 text-sm font-normal" /></label><label className="mt-4 block text-sm font-semibold text-slate-800">图片地址（可选）<input value={adImageUrl} onChange={(event) => setAdImageUrl(event.target.value)} placeholder="https://.../ad.jpg" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-semibold text-slate-800">开始时间（可选）<input value={adStartAt} onChange={(event) => setAdStartAt(event.target.value)} type="datetime-local" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label><label className="text-sm font-semibold text-slate-800">结束时间（可选）<input value={adEndAt} onChange={(event) => setAdEndAt(event.target.value)} type="datetime-local" className="mt-2 h-10 w-full border border-slate-300 px-3 text-sm font-normal" /></label></div><button type="button" onClick={() => void saveAd()} disabled={!adTitle.trim()} className="mt-5 border-2 border-slate-950 bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{editingAdId ? "保存广告" : "创建广告"}</button></div><div className="border border-slate-200 bg-white"><div className="border-b border-slate-200 px-5 py-3 text-sm font-bold text-slate-900">广告列表</div>{ads.length === 0 ? <p className="px-5 py-8 text-center text-sm text-slate-400">尚未创建广告。未配置广告时，记录页不会阻断用户查看。</p> : <div className="divide-y divide-slate-100">{ads.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"><div className="min-w-0"><p className="font-semibold text-slate-950">{item.title}</p><p className="mt-1 line-clamp-1 text-xs text-slate-500">{item.description || "无广告说明"}</p><p className="mt-2 text-xs text-slate-400">展示 {item.impressionCount} · 完成解锁 {item.completionCount} · 实际解锁 {item._count.unlocks} · {item.enabled ? "投放中" : "已停用"}</p></div><div className="flex gap-2"><button type="button" onClick={() => editAd(item)} className="border border-slate-300 px-3 py-1.5 text-xs font-bold">编辑</button><button type="button" onClick={() => void adAction("updateAd", item)} className="border border-cyan-300 px-3 py-1.5 text-xs font-bold text-cyan-800">{item.enabled ? "停用" : "启用"}</button><button type="button" onClick={() => void adAction("deleteAd", item)} className="border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700">删除</button></div></div>)}</div>}</div></section> : null}
+
+      {activeSection === "backup" ? <section className="space-y-4"><div className="border-2 border-slate-900 bg-white p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><h2 className="text-lg font-bold text-slate-950">数据库与附件备份</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">备份包包含 SQLite 数据库快照、用户上传图片和还原清单。服务器每小时创建一次，默认保留最近 {backupRetentionHours} 小时；下载后可在新服务器直接恢复。</p></div><button type="button" onClick={() => void createBackup()} disabled={backupCreating} className="shrink-0 border-2 border-slate-950 bg-cyan-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{backupCreating ? "正在打包..." : "立即创建备份"}</button></div>{backupMessage ? <p className="mt-4 border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-900">{backupMessage}</p> : null}</div><div className="overflow-x-auto border border-slate-200 bg-white"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-3"><h3 className="font-bold text-slate-950">最近备份</h3><button type="button" onClick={() => void loadBackups()} disabled={backupLoading} className="text-xs font-bold text-cyan-700 disabled:opacity-50">{backupLoading ? "刷新中..." : "刷新"}</button></div>{backups.length === 0 ? <p className="px-5 py-10 text-center text-sm text-slate-400">尚未找到备份。定时任务运行后或点击“立即创建备份”即可生成。</p> : <table className="w-full min-w-[720px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3">创建时间</th><th className="px-5 py-3">备份内容</th><th className="px-5 py-3">压缩包大小</th><th className="px-5 py-3"></th></tr></thead><tbody>{backups.map((backup) => <tr key={backup.archiveName} className="border-t border-slate-100"><td className="px-5 py-4 text-slate-700">{new Date(backup.createdAt).toLocaleString("zh-CN")}</td><td className="px-5 py-4 text-slate-600">数据库 {formatBytes(backup.databaseBytes)} · {backup.uploadsIncluded ? `${backup.uploadFileCount} 个附件` : "无附件"}</td><td className="px-5 py-4 font-medium text-slate-900">{formatBytes(backup.archiveBytes)}</td><td className="px-5 py-4 text-right"><a href={`/api/admin/backups?download=${encodeURIComponent(backup.archiveName)}`} className="border border-cyan-300 px-3 py-2 text-xs font-bold text-cyan-800 hover:bg-cyan-50">下载</a></td></tr>)}</tbody></table>}</div></section> : null}
 
       {activeSection === "config" ? (
         <div className="space-y-6">
