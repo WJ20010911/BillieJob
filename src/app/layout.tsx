@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Cormorant_Garamond,
@@ -39,8 +40,8 @@ export const metadata: Metadata = {
   description: "用真实用户的求职记录，反向监督企业招聘诚信。",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
-    apple: "/icon-192.png",
+    icon: "/billiejob-logo-192.png",
+    apple: "/billiejob-logo-192.png",
   },
 };
 
@@ -69,10 +70,18 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-[var(--background)] text-[var(--foreground)]">
         <header className="sticky top-0 z-[100] isolate border-b border-[var(--line)] bg-[color:rgba(255,253,248,0.84)] backdrop-blur-xl">
           <div className="relative mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 overflow-visible px-4">
-            <Link href="/" className="flex shrink-0 items-baseline gap-2 text-slate-950 transition hover:text-slate-700">
-             <span className="font-[var(--font-display-serif)] text-xl font-semibold tracking-[0.08em]">
-               BillieJob
-             </span>
+            <Link href="/" className="flex shrink-0 items-center gap-2 text-slate-950 transition hover:text-slate-700">
+              <Image
+                src="/billiejob-logo.png"
+                alt=""
+                width={36}
+                height={36}
+                priority
+                className="h-9 w-9 object-contain"
+              />
+              <span className="font-[var(--font-display-serif)] text-xl font-semibold tracking-[0.08em]">
+                BillieJob
+              </span>
             </Link>
             <nav className="flex shrink-0 items-center gap-2 whitespace-nowrap text-sm">
               <Link href="/upload" className="inline-flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-xl border-2 border-slate-950 bg-white px-3 text-xs font-bold text-slate-950 shadow-[0_4px_0_rgba(15,23,42,0.12)] transition hover:-translate-y-0.5 hover:bg-slate-50 sm:px-4 sm:text-sm">

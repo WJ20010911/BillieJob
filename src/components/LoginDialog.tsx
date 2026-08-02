@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 
 interface LoginDialogProps {
   open: boolean;
@@ -15,6 +16,17 @@ interface LoginDialogProps {
   onSubmit: () => void;
 }
 
+interface OAuthUser {
+  id: number;
+  identifier: string;
+  nickname?: string | null;
+  membershipDays: number;
+}
+
+type OAuthStatus = { qq: boolean; wechat: boolean };
+
+const USER_KEY = "job_insight_user";
+
 export default function LoginDialog({
   open,
   title,
@@ -26,6 +38,52 @@ export default function LoginDialog({
   onClose,
   onSubmit,
 }: LoginDialogProps) {
+  const [oauthStatus, setOAuthStatus] = useState<OAuthStatus | null>(null);
+  const [oauthError, setOAuthError] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    fetch("/api/auth/oauth/status", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: OAuthStatus) => {
+        if (active) setOAuthStatus(data);
+      })
+      .catch(() => {
+        if (active) setOAuthStatus({ qq: false, wechat: false });
+      });
+    return () => {
+      active = false;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.data?.type !== "billiejob-oauth") return;
+      if (event.data.error) {
+        setOAuthError(String(event.data.error));
+        return;
+      }
+      const user = event.data.user as OAuthUser | undefined;
+      if (!user?.id) return;
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      window.location.reload();
+    };
+    window.addEventListener("message", handleOAuthMessage);
+    return () => window.removeEventListener("message", handleOAuthMessage);
+  }, [open]);
+
+  const openOAuth = (provider: "qq" | "wechat") => {
+    setOAuthError("");
+    const popup = window.open(
+      `/api/auth/oauth/${provider}/start`,
+      "billiejob-oauth",
+      "popup=yes,width=720,height=760,resizable=yes,scrollbars=yes",
+    );
+    if (!popup) setOAuthError("浏览器阻止了登录窗口，请允许弹出窗口后重试");
+  };
+
   useEffect(() => {
     if (!open) return;
 
@@ -58,8 +116,15 @@ export default function LoginDialog({
       >
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.32em] text-slate-400">
-              BillieJob
+            <p className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">
+              <Image
+                src="/billiejob-logo.png"
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 object-contain"
+              />
+              <span>BillieJob</span>
             </p>
             <h2 className="mt-2 text-2xl font-semibold text-slate-950">{title}</h2>
             {description ? (
@@ -77,6 +142,35 @@ export default function LoginDialog({
         </div>
 
         <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => openOAuth("qq")}
+              disabled={!oauthStatus?.qq}
+              title={oauthStatus?.qq === false ? "QQ 登录尚未配置" : "QQ 扫码登录"}
+              className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-sky-200 bg-sky-50 text-sm font-medium text-sky-800 transition hover:border-sky-300 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-[10px] font-bold text-white">QQ</span>
+              QQ 扫码登录
+            </button>
+            <button
+              type="button"
+              onClick={() => openOAuth("wechat")}
+              disabled={!oauthStatus?.wechat}
+              title={oauthStatus?.wechat === false ? "微信登录尚未配置" : "微信扫码登录"}
+              className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">微</span>
+              微信扫码登录
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3 text-xs text-slate-400">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span>或使用账号</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">
               手机号或邮箱
@@ -95,9 +189,9 @@ export default function LoginDialog({
             </p>
           </div>
 
-          {error ? (
+          {error || oauthError ? (
             <p className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-              {error}
+              {oauthError || error}
             </p>
           ) : null}
 
