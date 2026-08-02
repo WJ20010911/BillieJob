@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Package application
-        run: tar --exclude=.git --exclude=node_modules --exclude=.next --exclude=dev.db --exclude=.env.local -czf billiejob-deploy.tar.gz .
+        run: tar --exclude=.git --exclude=node_modules --exclude=.next --exclude=dev.db --exclude=.env.local --exclude=billiejob-deploy.tar.gz -czf billiejob-deploy.tar.gz .
 
       - name: Upload application package
         uses: appleboy/scp-action@v1.0.0
