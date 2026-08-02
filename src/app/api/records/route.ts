@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const allowedRecordTypes = new Set(["JD_SNAPSHOT", "CHAT_SCREENSHOT", "INTERVIEW_EXPERIENCE", "WORK_TRIAL"]);
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -12,6 +14,10 @@ export async function POST(request: NextRequest) {
         { error: "请填写必要字段（类型、公司名称、城市、岗位、标题、内容）" },
         { status: 400 }
       );
+    }
+
+    if (!allowedRecordTypes.has(type)) {
+      return NextResponse.json({ error: "不支持的记录类型" }, { status: 400 });
     }
 
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {

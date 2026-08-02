@@ -1,6 +1,6 @@
 import type { CompanyExternalProfile } from "@/lib/company-profile";
 
-export type RecordType = "CHAT_SCREENSHOT" | "INTERVIEW_EXPERIENCE" | "JD_SNAPSHOT";
+export type RecordType = "CHAT_SCREENSHOT" | "INTERVIEW_EXPERIENCE" | "JD_SNAPSHOT" | "WORK_TRIAL";
 export type RecordStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export interface CompanyData {

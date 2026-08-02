@@ -61,7 +61,7 @@ model OAuthAccount {
 // 用户上传记录
 model Record {
   id        Int      @id @default(autoincrement())
-  type      String   // CHAT_SCREENSHOT | INTERVIEW_EXPERIENCE | JD_SNAPSHOT
+  type      String   // CHAT_SCREENSHOT | INTERVIEW_EXPERIENCE | JD_SNAPSHOT | WORK_TRIAL
   companyId Int
   company   Company  @relation(fields: [companyId], references: [id])
 

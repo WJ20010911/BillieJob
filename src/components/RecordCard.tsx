@@ -9,6 +9,7 @@ const typeLabels: Record<string, string> = {
   CHAT_SCREENSHOT: "💬 HR 对话",
   INTERVIEW_EXPERIENCE: "🎯 面试经历",
   JD_SNAPSHOT: "📄 招聘 JD 快照",
+  WORK_TRIAL: "💼 工作 / 试岗",
 };
 
 function timeAgo(dateStr: string): string {

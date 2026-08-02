@@ -71,7 +71,7 @@ interface SimilarRecordMatch {
 const USER_KEY = "job_insight_user";
 const ANALYSIS_SESSION_KEY = "billiejob_analysis_session";
 const ANALYSIS_RETURN_KEY = "billiejob_analysis_return";
-const recordTypeLabels: Record<string, string> = { JD_SNAPSHOT: "招聘信息", CHAT_SCREENSHOT: "HR 对话", INTERVIEW_EXPERIENCE: "面试经历" };
+const recordTypeLabels: Record<string, string> = { JD_SNAPSHOT: "招聘信息", CHAT_SCREENSHOT: "HR 对话", INTERVIEW_EXPERIENCE: "面试经历", WORK_TRIAL: "工作 / 试岗" };
 const fieldLabels: Record<string, string> = {
   salaryRange: "薪资范围",
   salaryStructure: "\u85aa\u8d44\u6784\u6210",

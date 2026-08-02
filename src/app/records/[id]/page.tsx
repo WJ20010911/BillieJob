@@ -7,6 +7,7 @@ const typeLabels: Record<string, string> = {
   JD_SNAPSHOT: "招聘信息",
   CHAT_SCREENSHOT: "HR 对话",
   INTERVIEW_EXPERIENCE: "面试经历",
+  WORK_TRIAL: "工作 / 试岗",
 };
 
 function formatDate(value: Date) {

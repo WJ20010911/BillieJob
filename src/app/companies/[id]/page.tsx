@@ -86,7 +86,7 @@ function getRatingSummary(records: Array<{ type: string; rating: number | null }
   const ratedRecords = records.filter((record) => record.rating !== null);
   const byType = {} as Partial<Record<RecordType, { average: number; count: number }>>;
 
-  for (const type of ["JD_SNAPSHOT", "CHAT_SCREENSHOT", "INTERVIEW_EXPERIENCE"] as RecordType[]) {
+  for (const type of ["JD_SNAPSHOT", "CHAT_SCREENSHOT", "INTERVIEW_EXPERIENCE", "WORK_TRIAL"] as RecordType[]) {
     const typeRatings = ratedRecords
       .filter((record) => record.type === type)
       .map((record) => record.rating as number);
