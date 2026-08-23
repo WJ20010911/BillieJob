@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import LoginDialog from "@/components/LoginDialog";
+import MaskedCompanyName from "@/components/MaskedCompanyName";
 import type { CompanyExternalProfile } from "@/lib/company-profile";
 import type { RecordData, RecordType } from "@/types";
 
@@ -352,7 +353,7 @@ export default function CompanyPageClient({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold text-slate-950">
-              {company.name}
+              <MaskedCompanyName name={company.name} />
             </h1>
             {company.alias ? (
               <p className="mt-1 text-sm text-slate-500">

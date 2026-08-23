@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { SearchSuggestion } from "@/types";
 import CityPicker from "@/components/CityPicker";
+import MaskedCompanyName from "@/components/MaskedCompanyName";
 
 export default function SearchBox() {
   const router = useRouter();
@@ -62,13 +63,7 @@ export default function SearchBox() {
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (suggestions.length > 0) {
-      const first = suggestions[0];
-      const url = city
-        ? "/companies/" + first.id + "?city=" + encodeURIComponent(city)
-        : "/companies/" + first.id;
-      router.push(url);
-    } else if (query.trim()) {
+    if (query.trim()) {
       const params = new URLSearchParams({ q: query.trim() });
       if (city) params.set("city", city);
       router.push("/search?" + params.toString());
@@ -100,7 +95,7 @@ export default function SearchBox() {
             value={query}
             onChange={(event) => handleInputChange(event.target.value)}
             onFocus={() => suggestions.length > 0 && setShowDropdown(true)}
-            placeholder="搜索公司名称"
+            placeholder="搜索公司或岗位"
             className="h-13 w-full rounded-2xl border border-slate-200 bg-white px-5 pr-12 text-base text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.08)] outline-none transition placeholder:text-slate-400 focus:border-slate-900 focus:bg-white"
             autoComplete="off"
           />
@@ -137,7 +132,12 @@ export default function SearchBox() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium text-slate-900">{company.name}</div>
+                  <div className="font-medium text-slate-900"><MaskedCompanyName name={company.name} /></div>
+                  {company.matchedPositions.length > 0 ? (
+                    <div className="mt-1 text-xs font-medium text-cyan-700">
+                      匹配岗位：{company.matchedPositions.slice(0, 2).join("、")}
+                    </div>
+                  ) : null}
                   <div className="mt-0.5 text-xs text-slate-400">
                     {company.cities && company.cities.length > 0
                       ? company.cities.slice(0, 3).join(" · ") + (company.cities.length > 3 ? " · · ·" : "")

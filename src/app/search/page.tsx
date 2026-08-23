@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import SearchBox from "@/components/SearchBox";
+import MaskedCompanyName from "@/components/MaskedCompanyName";
 import { prisma } from "@/lib/prisma";
 
 type SearchCompany = {
@@ -10,6 +11,7 @@ type SearchCompany = {
   score: number;
   recordCount: number;
   cities: string[];
+  matchedPositions: string[];
 };
 
 function mapCompanies(
@@ -19,10 +21,13 @@ function mapCompanies(
     alias: string | null;
     industry: string | null;
     score: number;
-    records: Array<{ city: string }>; 
+    records: Array<{ city: string; position: string }>;
     _count: { records: number };
-  }>
+  }>,
+  query: string,
 ): SearchCompany[] {
+  const normalizedQuery = query.toLocaleLowerCase();
+
   return companies.map((company) => ({
     id: company.id,
     name: company.name,
@@ -30,8 +35,51 @@ function mapCompanies(
     industry: company.industry,
     score: company.score,
     recordCount: company._count.records,
-    cities: company.records.map((record) => record.city).filter(Boolean),
+    cities: [
+      ...new Set(company.records.map((record) => record.city).filter(Boolean)),
+    ],
+    matchedPositions: [
+      ...new Set(
+        company.records
+          .map((record) => record.position.trim())
+          .filter(
+            (position) =>
+              position &&
+              position.toLocaleLowerCase().includes(normalizedQuery),
+          ),
+      ),
+    ].slice(0, 8),
   }));
+}
+
+function companySearchWhere(
+  query: string,
+  city?: string,
+): Prisma.CompanyWhereInput {
+  const keywordMatch: Prisma.CompanyWhereInput = {
+    OR: [
+      { name: { contains: query } },
+      { alias: { contains: query } },
+      {
+        records: {
+          some: {
+            status: "APPROVED",
+            position: { contains: query },
+            ...(city ? { city } : {}),
+          },
+        },
+      },
+    ],
+  };
+
+  if (!city) return keywordMatch;
+
+  return {
+    AND: [
+      keywordMatch,
+      { records: { some: { status: "APPROVED", city } } },
+    ],
+  };
 }
 
 export default async function SearchPage({
@@ -48,15 +96,7 @@ export default async function SearchPage({
 
   if (query) {
     try {
-      const where: Prisma.CompanyWhereInput = {
-        OR: [{ name: { contains: query } }, { alias: { contains: query } }],
-      };
-
-      if (cityFilter) {
-        where.records = {
-          some: { status: "APPROVED", city: cityFilter },
-        };
-      }
+      const where = companySearchWhere(query, cityFilter);
 
       const results = await prisma.company.findMany({
         where,
@@ -68,8 +108,7 @@ export default async function SearchPage({
           score: true,
           records: {
             where: { status: "APPROVED" },
-            select: { city: true },
-            distinct: ["city"],
+            select: { city: true, position: true },
           },
           _count: {
             select: { records: { where: { status: "APPROVED" } } },
@@ -78,13 +117,13 @@ export default async function SearchPage({
         orderBy: [{ score: "desc" }, { name: "asc" }],
       });
 
-      companies = mapCompanies(results);
+      companies = mapCompanies(results, query);
 
       if (cityFilter && companies.length === 0) {
         noResultsInCity = true;
         const fallback = await prisma.company.findMany({
           where: {
-            OR: [{ name: { contains: query } }, { alias: { contains: query } }],
+            ...companySearchWhere(query),
           },
           select: {
             id: true,
@@ -94,8 +133,7 @@ export default async function SearchPage({
             score: true,
             records: {
               where: { status: "APPROVED" },
-              select: { city: true },
-              distinct: ["city"],
+              select: { city: true, position: true },
             },
             _count: {
               select: { records: { where: { status: "APPROVED" } } },
@@ -103,7 +141,7 @@ export default async function SearchPage({
           },
           orderBy: [{ score: "desc" }, { name: "asc" }],
         });
-        companies = mapCompanies(fallback);
+        companies = mapCompanies(fallback, query);
       }
     } catch {
       // ignore
@@ -119,20 +157,20 @@ export default async function SearchPage({
       {query ? (
         <div>
           <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            搜索 “{query}” 的结果
+            搜索公司或岗位：“{query}”
             {cityFilter ? <span className="ml-2 text-sm font-normal text-gray-400">{cityFilter}</span> : null}
           </h2>
 
           {noResultsInCity ? (
             <div className="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-              <strong>{cityFilter} 暂无该公司的记录</strong>
-              <p className="mt-1">以下展示的是该公司在其他城市的记录。</p>
+              <strong>{cityFilter} 暂无匹配的公司或岗位</strong>
+              <p className="mt-1">以下展示其他城市的相关结果。</p>
             </div>
           ) : null}
 
           {companies.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="mb-2 text-gray-500">未找到相关公司</p>
+              <p className="mb-2 text-gray-500">未找到相关公司或岗位</p>
               <p className="mb-6 text-sm text-gray-400">
                 你可以
                 <a href="/upload" className="mx-1 text-blue-600 hover:underline">
@@ -151,11 +189,23 @@ export default async function SearchPage({
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="font-medium text-gray-900">{company.name}</div>
+                      <div className="font-medium text-gray-900"><MaskedCompanyName name={company.name} /></div>
                       <div className="mt-0.5 text-sm text-gray-500">
                         {company.alias ? company.alias + " · " : ""}
                         {company.industry || "未分类"}
                       </div>
+                      {company.matchedPositions.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {company.matchedPositions.slice(0, 4).map((position) => (
+                            <span
+                              key={position}
+                              className="border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs font-medium text-cyan-800"
+                            >
+                              {position}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       {company.cities.length > 0 ? (
                         <div className="mt-1 text-xs text-gray-400">
                           {company.cities.slice(0, 4).join(" · ")}
