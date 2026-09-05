@@ -17,9 +17,15 @@ jobs:
       - name: Check out deployment source
         uses: actions/checkout@v4
 
-      - name: Package application
+      - name: Install dependencies and build on GitHub Actions
         run: |
-          tar --exclude=.git --exclude=node_modules --exclude=.next --exclude=dev.db --exclude=.env.local -czf /tmp/billiejob-deploy.tar.gz .
+          npm ci
+          npx prisma generate
+          NODE_OPTIONS=--max-old-space-size=4096 npm run build
+
+      - name: Package application and prebuilt output
+        run: |
+          tar --exclude=.git --exclude=node_modules --exclude=dev.db --exclude=.env.local -czf /tmp/billiejob-deploy.tar.gz .
           mv /tmp/billiejob-deploy.tar.gz billiejob-deploy.tar.gz
 
       - name: Upload application package
@@ -45,9 +51,7 @@ jobs:
             cd /var/www/BillieJob
             tar -xzf /tmp/billiejob-deploy.tar.gz -C /var/www/BillieJob
             rm -f /tmp/billiejob-deploy.tar.gz
-            rm -rf .next
             npm ci
             npx prisma generate
             npx prisma db push
-            NODE_OPTIONS=--max-old-space-size=1536 npm run build
             PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 restart billiejob --update-env
