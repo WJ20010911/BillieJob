@@ -21,7 +21,7 @@ jobs:
         run: |
           npm ci
           npx prisma generate
-          NODE_OPTIONS=--max-old-space-size=4096 npm run build
+          NODE_OPTIONS=--max-old-space-size=4096 npm run build -- --webpack
 
       - name: Package application and prebuilt output
         run: |
@@ -54,4 +54,10 @@ jobs:
             npm ci
             npx prisma generate
             npx prisma db push
-            PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 restart billiejob --update-env
+            if PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 describe billiejob >/dev/null 2>&1; then
+              PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 delete billiejob
+            fi
+            DATABASE_URL=file:/var/www/BillieJob/dev.db PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 start .next/standalone/server.js --name billiejob --cwd /var/www/BillieJob --update-env
+            PM2_HOME=/home/ubuntu/.pm2 /usr/bin/pm2 save
+            sleep 3
+            curl -fsS http://127.0.0.1:3000/api/health
