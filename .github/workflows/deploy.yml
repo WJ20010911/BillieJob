@@ -51,6 +51,9 @@ jobs:
             cd /var/www/BillieJob
             tar -xzf /tmp/billiejob-deploy.tar.gz -C /var/www/BillieJob
             rm -f /tmp/billiejob-deploy.tar.gz
+            rm -rf .next/standalone/.next/static .next/standalone/public
+            cp -a .next/static .next/standalone/.next/static
+            cp -a public .next/standalone/public
             npm ci
             npx prisma generate
             npx prisma db push
